@@ -3,10 +3,13 @@ Módulo de autenticación con Google OAuth 2.0
 """
 import os
 import json
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import Flow
-from google.auth.transport.requests import Request
 import streamlit as st
+
+# NO importar aquí, hacerlo dentro de las funciones (lazy loading)
+# from google.oauth2.credentials import Credentials
+# from google_auth_oauthlib.flow import Flow
+# from google.auth.transport.requests import Request
+
 from src.utils.config import CREDENTIALS_FILE, TOKEN_FILE, SCOPES, get_redirect_uri, get_client_config
 
 class GoogleAuthenticator:
@@ -20,6 +23,10 @@ class GoogleAuthenticator:
         
     def load_credentials(self):
         """Cargar credenciales guardadas si existen"""
+        # Lazy import
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
+        
         if os.path.exists(self.token_file):
             try:
                 with open(self.token_file, 'r') as token:
@@ -44,6 +51,9 @@ class GoogleAuthenticator:
     
     def get_authorization_url(self):
         """Obtener URL de autorización de Google"""
+        # Lazy import
+        from google_auth_oauthlib.flow import Flow
+        
         redirect_uri = get_redirect_uri()
         client_config = get_client_config()
         
@@ -59,7 +69,7 @@ class GoogleAuthenticator:
             if not os.path.exists(self.credentials_file):
                 raise FileNotFoundError(
                     f"No se encontró {self.credentials_file}. "
-                    "Descárgalo desde Google Cloud Console."
+                    "Descárgalo desde Google Cloud Console o configura secrets en Streamlit."
                 )
             
             self.flow = Flow.from_client_secrets_file(
@@ -89,6 +99,7 @@ class GoogleAuthenticator:
     
     def get_user_info(self, creds):
         """Obtener información del usuario autenticado"""
+        # Lazy import
         from googleapiclient.discovery import build
         
         try:
