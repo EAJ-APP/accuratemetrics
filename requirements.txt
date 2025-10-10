@@ -1,0 +1,21 @@
+# Core
+streamlit==1.31.0
+python-dotenv==1.0.0
+
+# Google APIs
+google-auth==2.27.0
+google-auth-oauthlib==1.2.0
+google-auth-httplib2==0.2.0
+google-analytics-data==0.18.4
+
+# Data processing
+pandas==2.2.0
+numpy==1.26.3
+
+# Visualization
+plotly==5.18.0
+matplotlib==3.8.2
+seaborn==0.13.1
+
+# Utils
+pytz==2024.1
