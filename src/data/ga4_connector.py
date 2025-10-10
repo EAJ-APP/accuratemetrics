@@ -1,20 +1,21 @@
+
 """
 Conector para Google Analytics 4 Data API
 """
-from google.analytics.data_v1beta import BetaAnalyticsDataClient
-from google.analytics.data_v1beta.types import (
-    DateRange,
-    Dimension,
-    Metric,
-    RunReportRequest,
-)
-from google.oauth2.credentials import Credentials
 import pandas as pd
+
+# Lazy imports - no importar aquí
+# from google.analytics.data_v1beta import BetaAnalyticsDataClient
+# from google.analytics.data_v1beta.types import DateRange, Dimension, Metric, RunReportRequest
+# from google.oauth2.credentials import Credentials
 
 class GA4Connector:
     """Conector para extraer datos de Google Analytics 4"""
     
-    def __init__(self, credentials: Credentials):
+    def __init__(self, credentials):
+        # Lazy import
+        from google.analytics.data_v1beta import BetaAnalyticsDataClient
+        
         self.credentials = credentials
         self.client = BetaAnalyticsDataClient(credentials=credentials)
     
@@ -44,6 +45,9 @@ class GA4Connector:
         Returns:
             DataFrame con los datos
         """
+        # Lazy import
+        from google.analytics.data_v1beta.types import DateRange, Dimension, Metric, RunReportRequest
+        
         property_id = self._format_property_id(property_id)
         
         # Dimensiones base
@@ -118,6 +122,9 @@ class GA4Connector:
         Returns:
             DataFrame con los datos solicitados
         """
+        # Lazy import
+        from google.analytics.data_v1beta.types import DateRange, Dimension, Metric, RunReportRequest
+        
         property_id = self._format_property_id(property_id)
         
         # Métricas por defecto
