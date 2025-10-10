@@ -3,47 +3,70 @@ AccurateMetrics - Análisis de Impacto Causal con GA4
 Fase 1: Autenticación y extracción de datos
 """
 import streamlit as st
-from src.auth.google_oauth import GoogleAuthenticator
-from src.data.ga4_connector import GA4Connector
-import pandas as pd
-from datetime import datetime, timedelta
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+import sys
+import os
 
 # ============================================================================
-# 🐛 PESTAÑA DE DEBUG (temporal)
+# CONFIGURACIÓN DE LA PÁGINA
 # ============================================================================
-DEBUG_MODE = True  # Cambiar a False en producción
+st.set_page_config(
+    page_title="AccurateMetrics",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ============================================================================
+# 🐛 PESTAÑA DE DEBUG
+# ============================================================================
+DEBUG_MODE = True
 
 if DEBUG_MODE:
     with st.sidebar:
-        with st.expander("🐛 DEBUG INFO", expanded=False):
+        with st.expander("🐛 DEBUG INFO", expanded=True):
             st.write("**Python Version:**", sys.version)
             st.write("**Streamlit Version:**", st.__version__)
             
-            # Verificar instalación de librerías
             st.write("---")
-            st.write("**📦 Librerías Instaladas:**")
+            st.write("**📦 Verificando librerías...**")
             
-            libs_to_check = [
-                ('google.auth', 'google-auth'),
-                ('google_auth_oauthlib', 'google-auth-oauthlib'),
-                ('google.analytics.data_v1beta', 'google-analytics-data'),
-                ('googleapiclient', 'google-api-python-client'),
-                ('pandas', 'pandas'),
-                ('plotly', 'plotly'),
-            ]
+            # Verificar instalación con lazy loading
+            libs_status = {}
             
-            for module_name, package_name in libs_to_check:
-                try:
-                    module = __import__(module_name.split('.')[0])
-                    if hasattr(module, '__version__'):
-                        st.success(f"✅ {package_name}: {module.__version__}")
-                    else:
-                        st.success(f"✅ {package_name}: installed")
-                except ImportError as e:
-                    st.error(f"❌ {package_name}: NOT INSTALLED")
-                    st.code(str(e))
+            # Google Auth
+            try:
+                import google.auth
+                libs_status['google-auth'] = f"✅ {google.auth.__version__}"
+            except ImportError as e:
+                libs_status['google-auth'] = f"❌ {str(e)}"
+            
+            # Google Auth OAuth
+            try:
+                import google_auth_oauthlib
+                libs_status['google-auth-oauthlib'] = "✅ OK"
+            except ImportError as e:
+                libs_status['google-auth-oauthlib'] = f"❌ {str(e)}"
+            
+            # GA4 Data API
+            try:
+                from google.analytics.data_v1beta import BetaAnalyticsDataClient
+                libs_status['google-analytics-data'] = "✅ OK"
+            except ImportError as e:
+                libs_status['google-analytics-data'] = f"❌ {str(e)}"
+            
+            # Google API Client
+            try:
+                from googleapiclient.discovery import build
+                libs_status['google-api-python-client'] = "✅ OK"
+            except ImportError as e:
+                libs_status['google-api-python-client'] = f"❌ {str(e)}"
+            
+            # Mostrar resultados
+            for lib, status in libs_status.items():
+                if "✅" in status:
+                    st.success(f"{lib}: {status}")
+                else:
+                    st.error(f"{lib}: {status}")
             
             # Verificar secrets
             st.write("---")
@@ -51,35 +74,32 @@ if DEBUG_MODE:
             try:
                 if 'google_oauth' in st.secrets:
                     st.success("✅ google_oauth configurado")
-                    st.write("- client_id:", st.secrets['google_oauth']['client_id'][:20] + "...")
-                    st.write("- redirect_uri:", st.secrets['google_oauth']['redirect_uri'])
+                    st.code(f"client_id: {st.secrets['google_oauth']['client_id'][:30]}...")
+                    st.code(f"redirect_uri: {st.secrets['google_oauth']['redirect_uri']}")
                 else:
-                    st.warning("⚠️ google_oauth NO encontrado en secrets")
+                    st.error("❌ google_oauth NO encontrado")
             except Exception as e:
-                st.error(f"❌ Error al leer secrets: {e}")
-            
-            # Verificar archivos
-            st.write("---")
-            st.write("**📁 Archivos:**")
-            st.write("- Working Directory:", os.getcwd())
-            
-            files_to_check = ['credentials.json', 'token.json']
-            for file in files_to_check:
-                if os.path.exists(file):
-                    st.success(f"✅ {file} existe")
-                else:
-                    st.info(f"ℹ️ {file} no existe (normal en Cloud)")
-            
-            # Session state
-            st.write("---")
-            st.write("**💾 Session State:**")
-            st.write("- authenticated:", st.session_state.get('authenticated', False))
-            st.write("- has credentials:", st.session_state.get('credentials') is not None)
-            st.write("- has user_info:", st.session_state.get('user_info') is not None)
-            st.write("- has ga4_data:", st.session_state.get('ga4_data') is not None)
-
+                st.error(f"❌ Error: {e}")
 
 # ============================================================================
+# IMPORTS PRINCIPALES (después del debug)
+# ============================================================================
+try:
+    from src.auth.google_oauth import GoogleAuthenticator
+    from src.data.ga4_connector import GA4Connector
+    import pandas as pd
+    from datetime import datetime, timedelta
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+    
+    IMPORTS_OK = True
+except Exception as e:
+    IMPORTS_OK = False
+    st.error(f"❌ Error al importar módulos: {e}")
+    st.stop()
+
+# ... resto del código igual
+ ============================================================================
 # CONFIGURACIÓN DE LA PÁGINA
 # ============================================================================
 st.set_page_config(
