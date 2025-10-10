@@ -1,0 +1,34 @@
+# Environment
+.venv
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Streamlit
+.streamlit/secrets.toml
+
+# 🔐 CRÍTICO: Credenciales y tokens
+credentials.json          # ← OAuth credentials de Google Cloud
+token.json               # ← Token de sesión del usuario
+client_secret_*.json     # ← Cualquier variante de credentials
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data
+*.csv
+*.xlsx
+data/
