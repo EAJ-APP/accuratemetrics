@@ -261,3 +261,191 @@ if st.session_state.authenticated:
         fig = make_subplots(
             rows=2, cols=1,
             subplot_titles=('Sesiones Diarias', 'Conversiones Diarias'),
+            vertical_spacing=0.15,
+            row_heights=[0.5, 0.5]
+        )
+        
+        # Gráfico de sesiones
+        fig.add_trace(
+            go.Scatter(
+                x=df['date'],
+                y=df['sessions'],
+                mode='lines',
+                name='Sesiones',
+                line=dict(color='#1f77b4', width=2),
+                fill='tozeroy',
+                fillcolor='rgba(31, 119, 180, 0.1)'
+            ),
+            row=1, col=1
+        )
+        
+        # Gráfico de conversiones
+        fig.add_trace(
+            go.Scatter(
+                x=df['date'],
+                y=df['conversions'],
+                mode='lines',
+                name='Conversiones',
+                line=dict(color='#ff7f0e', width=2),
+                fill='tozeroy',
+                fillcolor='rgba(255, 127, 14, 0.1)'
+            ),
+            row=2, col=1
+        )
+        
+        # Configurar layout
+        fig.update_layout(
+            height=700,
+            showlegend=False,
+            hovermode='x unified',
+            template='plotly_white'
+        )
+        
+        fig.update_xaxes(title_text="Fecha", row=2, col=1)
+        fig.update_yaxes(title_text="Sesiones", row=1, col=1)
+        fig.update_yaxes(title_text="Conversiones", row=2, col=1)
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Estadísticas adicionales
+        st.subheader("📊 Estadísticas")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**Sesiones**")
+            stats_sessions = pd.DataFrame({
+                'Métrica': ['Promedio diario', 'Máximo', 'Mínimo', 'Desviación estándar'],
+                'Valor': [
+                    f"{df['sessions'].mean():,.0f}",
+                    f"{df['sessions'].max():,.0f}",
+                    f"{df['sessions'].min():,.0f}",
+                    f"{df['sessions'].std():,.0f}"
+                ]
+            })
+            st.dataframe(stats_sessions, hide_index=True, use_container_width=True)
+        
+        with col2:
+            st.markdown("**Conversiones**")
+            stats_conversions = pd.DataFrame({
+                'Métrica': ['Promedio diario', 'Máximo', 'Mínimo', 'Desviación estándar'],
+                'Valor': [
+                    f"{df['conversions'].mean():,.2f}",
+                    f"{df['conversions'].max():,.0f}",
+                    f"{df['conversions'].min():,.0f}",
+                    f"{df['conversions'].std():,.2f}"
+                ]
+            })
+            st.dataframe(stats_conversions, hide_index=True, use_container_width=True)
+        
+        # Tabla de datos
+        st.subheader("📋 Tabla de Datos")
+        
+        # Formatear DataFrame para mostrar
+        df_display = df.copy()
+        df_display['date'] = df_display['date'].dt.strftime('%Y-%m-%d')
+        df_display['sessions'] = df_display['sessions'].apply(lambda x: f"{x:,.0f}")
+        df_display['conversions'] = df_display['conversions'].apply(lambda x: f"{x:,.2f}")
+        
+        st.dataframe(df_display, use_container_width=True, height=400)
+        
+        # Botón de descarga
+        col1, col2, col3 = st.columns([1, 1, 2])
+        
+        with col1:
+            csv = df.to_csv(index=False)
+            st.download_button(
+                label="📥 Descargar CSV",
+                data=csv,
+                file_name=f"ga4_data_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        
+        with col2:
+            # Preparar Excel (opcional, requiere openpyxl)
+            try:
+                import io
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    df.to_excel(writer, index=False, sheet_name='GA4 Data')
+                
+                st.download_button(
+                    label="📥 Descargar Excel",
+                    data=buffer.getvalue(),
+                    file_name=f"ga4_data_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            except ImportError:
+                pass
+
+else:
+    # ========================================================================
+    # PANTALLA DE BIENVENIDA (NO AUTENTICADO)
+    # ========================================================================
+    st.info("👈 Por favor, inicia sesión con Google en el panel lateral para continuar")
+    
+    # Información sobre la app
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown("""
+        ## 🎯 ¿Qué es AccurateMetrics?
+        
+        **AccurateMetrics** es una herramienta de análisis de impacto causal que te permite:
+        
+        - 🔐 **Conectar de forma segura** con Google Analytics 4
+        - 📊 **Extraer datos** de sesiones y conversiones
+        - 📈 **Analizar el impacto causal** de tus campañas de marketing usando modelos bayesianos
+        - 🎯 **Segmentar resultados** por dispositivo, canal, ciudad, etc.
+        - 📉 **Predecir contrafactuales** - qué habría pasado sin la intervención
+        
+        ### 📚 Fundamento Científico
+        
+        Basado en el paper académico:
+        
+        > *Brodersen et al. (2015) - Inferring causal impact using Bayesian structural time-series models*
+        > 
+        > The Annals of Applied Statistics
+        
+        ### 🚀 ¿Cómo empezar?
+        
+        1. **Inicia sesión** con tu cuenta de Google (panel lateral)
+        2. **Ingresa tu Property ID** de GA4
+        3. **Selecciona el periodo** que quieres analizar
+        4. **Extrae los datos** y visualiza las métricas
+        5. *(Próximamente)* Define tu intervención y analiza el impacto causal
+        """)
+    
+    with col2:
+        st.markdown("### 📋 Estado del Proyecto")
+        
+        st.success("✅ **FASE 1**: Autenticación y Datos")
+        st.info("🔄 **FASE 2**: Modelo CausalImpact")
+        st.info("⏳ **FASE 3**: Segmentación Avanzada")
+        
+        st.markdown("---")
+        
+        st.markdown("### 🔒 Seguridad")
+        st.markdown("""
+        - Autenticación OAuth 2.0
+        - Permisos solo de lectura
+        - Sin almacenamiento de credenciales
+        - Conexión directa con Google
+        """)
+
+# ============================================================================
+# FOOTER
+# ============================================================================
+st.markdown("---")
+col1, col2, col3 = st.columns([2, 1, 1])
+
+with col1:
+    st.caption("AccurateMetrics v0.1 - FASE 1 | Powered by Streamlit & Google Analytics 4")
+
+with col2:
+    st.caption("📄 [Documentación](https://github.com/tuusuario/accuratemetrics)")
+
+with col3:
+    st.caption("🐛 [Reportar Bug](https://github.com/tuusuario/accuratemetrics/issues)")
