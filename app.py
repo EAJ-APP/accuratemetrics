@@ -11,6 +11,75 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # ============================================================================
+# 🐛 PESTAÑA DE DEBUG (temporal)
+# ============================================================================
+DEBUG_MODE = True  # Cambiar a False en producción
+
+if DEBUG_MODE:
+    with st.sidebar:
+        with st.expander("🐛 DEBUG INFO", expanded=False):
+            st.write("**Python Version:**", sys.version)
+            st.write("**Streamlit Version:**", st.__version__)
+            
+            # Verificar instalación de librerías
+            st.write("---")
+            st.write("**📦 Librerías Instaladas:**")
+            
+            libs_to_check = [
+                ('google.auth', 'google-auth'),
+                ('google_auth_oauthlib', 'google-auth-oauthlib'),
+                ('google.analytics.data_v1beta', 'google-analytics-data'),
+                ('googleapiclient', 'google-api-python-client'),
+                ('pandas', 'pandas'),
+                ('plotly', 'plotly'),
+            ]
+            
+            for module_name, package_name in libs_to_check:
+                try:
+                    module = __import__(module_name.split('.')[0])
+                    if hasattr(module, '__version__'):
+                        st.success(f"✅ {package_name}: {module.__version__}")
+                    else:
+                        st.success(f"✅ {package_name}: installed")
+                except ImportError as e:
+                    st.error(f"❌ {package_name}: NOT INSTALLED")
+                    st.code(str(e))
+            
+            # Verificar secrets
+            st.write("---")
+            st.write("**🔐 Secrets:**")
+            try:
+                if 'google_oauth' in st.secrets:
+                    st.success("✅ google_oauth configurado")
+                    st.write("- client_id:", st.secrets['google_oauth']['client_id'][:20] + "...")
+                    st.write("- redirect_uri:", st.secrets['google_oauth']['redirect_uri'])
+                else:
+                    st.warning("⚠️ google_oauth NO encontrado en secrets")
+            except Exception as e:
+                st.error(f"❌ Error al leer secrets: {e}")
+            
+            # Verificar archivos
+            st.write("---")
+            st.write("**📁 Archivos:**")
+            st.write("- Working Directory:", os.getcwd())
+            
+            files_to_check = ['credentials.json', 'token.json']
+            for file in files_to_check:
+                if os.path.exists(file):
+                    st.success(f"✅ {file} existe")
+                else:
+                    st.info(f"ℹ️ {file} no existe (normal en Cloud)")
+            
+            # Session state
+            st.write("---")
+            st.write("**💾 Session State:**")
+            st.write("- authenticated:", st.session_state.get('authenticated', False))
+            st.write("- has credentials:", st.session_state.get('credentials') is not None)
+            st.write("- has user_info:", st.session_state.get('user_info') is not None)
+            st.write("- has ga4_data:", st.session_state.get('ga4_data') is not None)
+
+
+# ============================================================================
 # CONFIGURACIÓN DE LA PÁGINA
 # ============================================================================
 st.set_page_config(
