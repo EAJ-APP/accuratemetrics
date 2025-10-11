@@ -18,10 +18,11 @@ SCOPES = [
 # OAuth Redirect URI
 def get_redirect_uri():
     """Obtener redirect URI según el entorno"""
-    # Intentar leer de secrets primero
     try:
         if 'google_oauth' in st.secrets:
-            return st.secrets['google_oauth']['redirect_uri']
+            uri = st.secrets['google_oauth']['redirect_uri']
+            # IMPORTANTE: Quitar barra final si existe
+            return uri.rstrip('/')
     except:
         pass
     
@@ -31,9 +32,10 @@ def get_redirect_uri():
 # Google OAuth Client Config
 def get_client_config():
     """Obtener configuración OAuth desde secrets o archivo"""
-    # Intentar leer de Streamlit secrets primero
     try:
         if 'google_oauth' in st.secrets:
+            redirect_uri = get_redirect_uri()  # Ya sin barra final
+            
             return {
                 "web": {
                     "client_id": st.secrets["google_oauth"]["client_id"],
@@ -42,7 +44,7 @@ def get_client_config():
                     "auth_uri": st.secrets["google_oauth"]["auth_uri"],
                     "token_uri": st.secrets["google_oauth"]["token_uri"],
                     "auth_provider_x509_cert_url": st.secrets["google_oauth"]["auth_provider_x509_cert_url"],
-                    "redirect_uris": [get_redirect_uri()]
+                    "redirect_uris": [redirect_uri]
                 }
             }
     except Exception as e:
