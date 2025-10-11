@@ -106,6 +106,10 @@ if 'ga4_data' not in st.session_state:
     st.session_state.ga4_data = None
 if 'property_id' not in st.session_state:
     st.session_state.property_id = None
+if 'show_auth_url' not in st.session_state:
+    st.session_state.show_auth_url = False
+if 'auth_url_generated' not in st.session_state:
+    st.session_state.auth_url_generated = None
 
 # ============================================================================
 # TÍTULO PRINCIPAL
@@ -134,6 +138,8 @@ if 'code' in query_params:
             st.session_state.credentials = creds
             st.session_state.user_info = auth.get_user_info(creds)
             st.session_state.authenticated = True
+            st.session_state.show_auth_url = False
+            st.session_state.auth_url_generated = None
             
             st.query_params.clear()
             st.success("✅ Autenticación completada")
@@ -183,6 +189,8 @@ with st.sidebar:
             st.session_state.user_info = None
             st.session_state.ga4_data = None
             st.session_state.property_id = None
+            st.session_state.show_auth_url = False
+            st.session_state.auth_url_generated = None
             st.rerun()
     
     # Usuario NO autenticado
@@ -191,14 +199,57 @@ with st.sidebar:
         st.markdown("---")
         
         try:
-            # Generar URL de autorización
-            auth_url = auth.get_authorization_url()
+            # Botón para generar URL
+            if st.button("🔑 Generar URL de Autenticación", type="primary", use_container_width=True):
+                with st.spinner("Generando URL..."):
+                    auth_url = auth.get_authorization_url()
+                    st.session_state.auth_url_generated = auth_url
+                    st.session_state.show_auth_url = True
+                    st.rerun()
             
-            # Botón de autenticación
-            if st.button("🔑 Iniciar sesión con Google", type="primary", use_container_width=True):
-                st.markdown(f'<meta http-equiv="refresh" content="0; url={auth_url}">', unsafe_allow_html=True)
+            # Mostrar URL si fue generada
+            if st.session_state.show_auth_url and st.session_state.auth_url_generated:
+                st.success("✅ URL generada")
+                st.markdown("---")
+                
+                st.markdown("**📋 Copia esta URL y pégala en tu navegador:**")
+                
+                # Mostrar URL en un text_area para facilitar la copia
+                st.text_area(
+                    "URL de Autenticación",
+                    st.session_state.auth_url_generated,
+                    height=100,
+                    help="Selecciona todo el texto (Ctrl+A), copia (Ctrl+C) y pega en una nueva pestaña"
+                )
+                
+                # Botón alternativo para abrir en nueva pestaña
+                st.markdown(
+                    f'<a href="{st.session_state.auth_url_generated}" target="_blank">'
+                    '<button style="'
+                    'background: #4285f4;'
+                    'color: white;'
+                    'padding: 8px 16px;'
+                    'border: none;'
+                    'border-radius: 4px;'
+                    'cursor: pointer;'
+                    'font-size: 14px;'
+                    'margin-top: 10px;'
+                    'width: 100%;'
+                    '">🔗 O haz click aquí para abrir</button>'
+                    '</a>',
+                    unsafe_allow_html=True
+                )
+                
+                st.caption("⚠️ Si el botón no funciona, usa copiar/pegar")
+                
+                # Botón para regenerar URL si es necesario
+                if st.button("🔄 Regenerar URL", use_container_width=True):
+                    st.session_state.show_auth_url = False
+                    st.session_state.auth_url_generated = None
+                    st.rerun()
             
-            st.caption("Se abrirá la página de Google para autorizar el acceso")
+            else:
+                st.caption("Haz click en el botón para generar la URL de autenticación")
             
         except Exception as e:
             st.error("❌ Error al inicializar autenticación")
