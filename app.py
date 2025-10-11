@@ -118,7 +118,7 @@ st.markdown("---")
 auth = GoogleAuthenticator()
 
 # ============================================================================
-# SIDEBAR - AUTENTICACIÓN CORREGIDA
+# SIDEBAR - AUTENTICACIÓN PROFESIONAL
 # Reemplaza la sección completa del sidebar en app.py
 # ============================================================================
 
@@ -127,27 +127,23 @@ query_params = st.query_params
 if 'code' in query_params:
     auth_code = query_params['code']
     
-    with st.spinner("🔄 Completando autenticación..."):
+    with st.spinner("🔄 Procesando autenticación..."):
         try:
             creds = auth.authenticate_with_code(auth_code)
             st.session_state.credentials = creds
             st.session_state.user_info = auth.get_user_info(creds)
             st.session_state.authenticated = True
             
-            # Limpiar query params
             st.query_params.clear()
-            
-            st.success("✅ ¡Autenticación exitosa!")
+            st.success("✅ Autenticación completada")
             st.balloons()
             st.rerun()
             
         except Exception as e:
-            st.error(f"❌ Error en autenticación: {str(e)}")
+            st.error("❌ Error durante la autenticación")
             
-            with st.expander("🔍 Detalles del error"):
+            with st.expander("📋 Detalles técnicos"):
                 st.code(str(e))
-                import traceback
-                st.code(traceback.format_exc())
             
             st.query_params.clear()
 
@@ -166,7 +162,7 @@ with st.sidebar:
     
     # Usuario autenticado
     if st.session_state.authenticated:
-        st.success("✅ Autenticado")
+        st.success("✅ Sesión activa")
         
         if st.session_state.user_info:
             col1, col2 = st.columns([1, 3])
@@ -190,73 +186,24 @@ with st.sidebar:
     
     # Usuario NO autenticado
     else:
-        st.warning("⚠️ No autenticado")
+        st.warning("⚠️ Sesión no iniciada")
         st.markdown("---")
-        
-        st.info("""
-        **Para conectar con Google Analytics:**
-        
-        1. Click en el botón de abajo
-        2. Autoriza el acceso a tu cuenta
-        3. Serás redirigido automáticamente
-        
-        ✨ **¡Es automático!** No necesitas copiar ningún código.
-        """)
         
         try:
             # Generar URL de autorización
             auth_url = auth.get_authorization_url()
             
-            # Botón HTML personalizado con la URL correcta
-            st.markdown(
-                f'''
-                <a href="{auth_url}" target="_self">
-                    <button style="
-                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                        color: white;
-                        padding: 16px 24px;
-                        border: none;
-                        border-radius: 12px;
-                        cursor: pointer;
-                        width: 100%;
-                        font-size: 18px;
-                        font-weight: bold;
-                        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                        transition: all 0.3s ease;
-                    " onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 12px rgba(0,0,0,0.15)'" 
-                       onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 6px rgba(0,0,0,0.1)'">
-                        🔑 Conectar con Google Analytics
-                    </button>
-                </a>
-                ''',
-                unsafe_allow_html=True
-            )
+            # Botón de autenticación
+            if st.button("🔑 Iniciar sesión con Google", type="primary", use_container_width=True):
+                st.markdown(f'<meta http-equiv="refresh" content="0; url={auth_url}">', unsafe_allow_html=True)
             
-            # Debug info (opcional - ocultar en producción)
-            if DEBUG_MODE:
-                with st.expander("🔍 Debug - Ver URL generada"):
-                    st.code(auth_url)
+            st.caption("Se abrirá la página de Google para autorizar el acceso")
             
         except Exception as e:
-            st.error(f"❌ Error generando URL de autorización")
+            st.error("❌ Error al inicializar autenticación")
             
-            with st.expander("🔍 Información técnica"):
+            with st.expander("📋 Detalles técnicos"):
                 st.code(str(e))
-                import traceback
-                st.code(traceback.format_exc())
-                
-                # Verificar secrets
-                try:
-                    if 'oauth' in st.secrets:
-                        st.success("✅ Secrets [oauth] encontrados")
-                        st.code(f"redirect_uri: {st.secrets['oauth']['redirect_uri']}")
-                    elif 'google_oauth' in st.secrets:
-                        st.warning("⚠️ Usando [google_oauth] (legacy)")
-                        st.code(f"redirect_uri: {st.secrets['google_oauth']['redirect_uri']}")
-                    else:
-                        st.error("❌ No se encontraron secrets OAuth")
-                except Exception as secret_err:
-                    st.error(f"Error leyendo secrets: {secret_err}")
 
 # ============================================================================
 # CONTENIDO PRINCIPAL - CON SELECTOR DE PROPIEDADES
