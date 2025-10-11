@@ -1,5 +1,5 @@
 """
-Configuración de la aplicación - VERSIÓN CORREGIDA
+Configuración de la aplicación - CON DEBUG DE URI
 """
 import streamlit as st
 
@@ -7,36 +7,31 @@ import streamlit as st
 CREDENTIALS_FILE = 'credentials.json'
 TOKEN_FILE = 'token.json'
 
-# ⚠️ IMPORTANTE: Para apps NO VERIFICADAS en Google, usar SOLO scopes básicos
-# Si tu app NO está verificada, comenta los scopes de Analytics
+# Scopes básicos (sin Analytics por ahora)
 SCOPES = [
-    # 🔴 COMENTAR TEMPORALMENTE si la app no está verificada:
-    # 'https://www.googleapis.com/auth/analytics.readonly',
-    
-    # ✅ Scopes BÁSICOS (siempre funcionan):
     'openid',
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile'
 ]
 
-# Si ya verificaste tu app en Google Cloud Console, descomenta esto:
-# SCOPES = [
-#     'https://www.googleapis.com/auth/analytics.readonly',
-#     'openid',
-#     'https://www.googleapis.com/auth/userinfo.email',
-#     'https://www.googleapis.com/auth/userinfo.profile'
-# ]
-
 def get_redirect_uri():
-    """Obtener redirect URI según el entorno"""
+    """Obtener redirect URI según el entorno - CON DEBUG"""
     try:
         if 'google_oauth' in st.secrets:
             uri = st.secrets['google_oauth']['redirect_uri']
-            # IMPORTANTE: Quitar barra final si existe
-            uri = uri.rstrip('/')
             
-            # 🔍 DEBUG: Verificar que la URI sea correcta
-            print(f"✅ Redirect URI configurado: {uri}")
+            # ⚠️ IMPORTANTE: NO modificar la URI aquí
+            # Debe coincidir EXACTAMENTE con Google Cloud Console
+            
+            # DEBUG: Mostrar en consola
+            print("=" * 60)
+            print("🔍 DEBUG REDIRECT URI")
+            print("=" * 60)
+            print(f"URI desde secrets: '{uri}'")
+            print(f"Longitud: {len(uri)}")
+            print(f"Termina en /: {uri.endswith('/')}")
+            print(f"Caracteres finales: {repr(uri[-5:])}")
+            print("=" * 60)
             
             return uri
     except Exception as e:
@@ -46,7 +41,7 @@ def get_redirect_uri():
     return 'http://localhost:8501'
 
 def get_client_config():
-    """Obtener configuración OAuth desde secrets o archivo"""
+    """Obtener configuración OAuth desde secrets"""
     try:
         if 'google_oauth' in st.secrets:
             redirect_uri = get_redirect_uri()
@@ -63,13 +58,15 @@ def get_client_config():
                 }
             }
             
-            print(f"✅ Client ID: {config['web']['client_id'][:20]}...")
-            print(f"✅ Redirect URI en config: {redirect_uri}")
+            # DEBUG adicional
+            print(f"✅ Client ID: {config['web']['client_id'][:30]}...")
+            print(f"✅ Redirect URI en config: '{redirect_uri}'")
             
             return config
             
     except Exception as e:
         print(f"❌ Error cargando secrets: {e}")
+        import traceback
+        traceback.print_exc()
     
-    # Si no hay secrets, se usará el archivo credentials.json
     return None
