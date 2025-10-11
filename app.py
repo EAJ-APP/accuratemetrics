@@ -17,62 +17,64 @@ st.set_page_config(
 )
 
 # ============================================================================
-# PESTAÑA DE DEBUG
+# PESTAÑA DE DEBUG PROFESIONAL
 # ============================================================================
 DEBUG_MODE = True
 
 if DEBUG_MODE:
     with st.sidebar:
-        with st.expander("🐛 DEBUG INFO", expanded=True):
-            st.write("**Python Version:**", sys.version)
-            st.write("**Streamlit Version:**", st.__version__)
+        st.markdown("---")
+        with st.expander("🔧 Sistema", expanded=False):
             
-            st.write("---")
-            st.write("**📦 Verificando librerías...**")
+            # Versiones
+            st.markdown("**Versiones**")
+            version_data = {
+                "Python": sys.version.split()[0],
+                "Streamlit": st.__version__
+            }
+            for key, value in version_data.items():
+                st.text(f"{key}: {value}")
             
-            libs_status = {}
+            st.markdown("---")
             
+            # Estado de librerías
+            st.markdown("**Librerías OAuth**")
+            
+            libs_to_check = [
+                ('google.auth', 'google-auth'),
+                ('google_auth_oauthlib', 'google-auth-oauthlib'),
+                ('google.analytics.data_v1beta', 'google-analytics-data'),
+                ('google.analytics.admin', 'google-analytics-admin'),
+                ('googleapiclient.discovery', 'google-api-python-client')
+            ]
+            
+            all_ok = True
+            for module_name, display_name in libs_to_check:
+                try:
+                    __import__(module_name)
+                    st.text(f"✅ {display_name}")
+                except ImportError:
+                    st.text(f"❌ {display_name}")
+                    all_ok = False
+            
+            if all_ok:
+                st.success("Todas las librerías cargadas")
+            
+            st.markdown("---")
+            
+            # Configuración OAuth
+            st.markdown("**Configuración OAuth**")
             try:
-                import google.auth
-                libs_status['google-auth'] = f"✅ {google.auth.__version__}"
-            except ImportError as e:
-                libs_status['google-auth'] = f"❌ {str(e)}"
-            
-            try:
-                import google_auth_oauthlib
-                libs_status['google-auth-oauthlib'] = "✅ OK"
-            except ImportError as e:
-                libs_status['google-auth-oauthlib'] = f"❌ {str(e)}"
-            
-            try:
-                from google.analytics.data_v1beta import BetaAnalyticsDataClient
-                libs_status['google-analytics-data'] = "✅ OK"
-            except ImportError as e:
-                libs_status['google-analytics-data'] = f"❌ {str(e)}"
-            
-            try:
-                from googleapiclient.discovery import build
-                libs_status['google-api-python-client'] = "✅ OK"
-            except ImportError as e:
-                libs_status['google-api-python-client'] = f"❌ {str(e)}"
-            
-            for lib, status in libs_status.items():
-                if "✅" in status:
-                    st.success(f"{lib}: {status}")
+                if 'oauth' in st.secrets:
+                    st.text("✅ Secrets configurados")
+                    client_id = st.secrets['oauth']['client_id']
+                    st.text(f"Client ID: {client_id[:20]}...")
+                elif 'google_oauth' in st.secrets:
+                    st.text("⚠️ Usando legacy config")
                 else:
-                    st.error(f"{lib}: {status}")
-            
-            st.write("---")
-            st.write("**🔐 Secrets:**")
-            try:
-                if 'google_oauth' in st.secrets:
-                    st.success("✅ google_oauth configurado")
-                    st.code(f"client_id: {st.secrets['google_oauth']['client_id'][:30]}...")
-                    st.code(f"redirect_uri: {st.secrets['google_oauth']['redirect_uri']}")
-                else:
-                    st.error("❌ google_oauth NO encontrado")
+                    st.text("❌ Secrets no encontrados")
             except Exception as e:
-                st.error(f"❌ Error: {e}")
+                st.text(f"❌ Error: {str(e)[:50]}")
 
 # ============================================================================
 # IMPORTS PRINCIPALES
@@ -119,7 +121,6 @@ auth = GoogleAuthenticator()
 
 # ============================================================================
 # SIDEBAR - AUTENTICACIÓN PROFESIONAL
-# Reemplaza la sección completa del sidebar en app.py
 # ============================================================================
 
 # PRIMERO: Manejar callback OAuth ANTES de mostrar UI
@@ -207,7 +208,6 @@ with st.sidebar:
 
 # ============================================================================
 # CONTENIDO PRINCIPAL - CON SELECTOR DE PROPIEDADES
-# Reemplaza desde "if st.session_state.authenticated:" hasta el final de esa sección
 # ============================================================================
 
 if st.session_state.authenticated:
@@ -530,14 +530,70 @@ if st.session_state.authenticated:
                 pass
 
 # ============================================================================
-# FIN DE LA SECCIÓN - Usuario NO autenticado continúa igual
+# CONTENIDO PARA USUARIO NO AUTENTICADO
 # ============================================================================
 
 else:
-    # La sección de usuario no autenticado permanece igual...
-    st.info("👈 Por favor, inicia sesión con Google en el panel lateral para continuar")
+    # Usuario no autenticado - Vista profesional
     
-    # ... resto del código igual
+    st.markdown("""
+    <div style="text-align: center; padding: 60px 20px;">
+        <h2>🔐 Acceso Requerido</h2>
+        <p style="font-size: 18px; color: #666; margin-top: 20px;">
+            Inicia sesión con tu cuenta de Google para acceder a Google Analytics 4
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.info("""
+        **Requisitos:**
+        
+        ✅ Cuenta de Google con acceso a Google Analytics 4  
+        ✅ Permisos de lectura en al menos una propiedad GA4
+        """)
+        
+        st.markdown("---")
+        
+        st.markdown("""
+        **Funcionalidades:**
+        
+        📊 Extracción de datos de sesiones y conversiones  
+        📈 Análisis de impacto causal  
+        📉 Visualizaciones interactivas  
+        📥 Exportación a CSV y Excel
+        """)
+    
+    st.markdown("---")
+    
+    # Features en cards
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        <div style="padding: 20px; background: #f0f2f6; border-radius: 10px;">
+            <h3>🔒 Seguro</h3>
+            <p>Autenticación OAuth 2.0 de Google. Tus credenciales nunca se almacenan.</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div style="padding: 20px; background: #f0f2f6; border-radius: 10px;">
+            <h3>⚡ Rápido</h3>
+            <p>Conexión directa con la API de Google Analytics 4 sin intermediarios.</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div style="padding: 20px; background: #f0f2f6; border-radius: 10px;">
+            <h3>📊 Completo</h3>
+            <p>Análisis estadístico avanzado con metodología Causal Impact.</p>
+        </div>
+        """, unsafe_allow_html=True)
 
 # ============================================================================
 # FOOTER
