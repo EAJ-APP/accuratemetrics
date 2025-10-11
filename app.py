@@ -118,8 +118,8 @@ st.markdown("---")
 auth = GoogleAuthenticator()
 
 # ============================================================================
-# SIDEBAR - AUTENTICACIÓN SIMPLIFICADA
-# Reemplaza desde "with st.sidebar:" hasta antes de "if st.session_state.authenticated:"
+# SIDEBAR - AUTENTICACIÓN CORREGIDA
+# Reemplaza la sección completa del sidebar en app.py
 # ============================================================================
 
 # PRIMERO: Manejar callback OAuth ANTES de mostrar UI
@@ -143,6 +143,12 @@ if 'code' in query_params:
             
         except Exception as e:
             st.error(f"❌ Error en autenticación: {str(e)}")
+            
+            with st.expander("🔍 Detalles del error"):
+                st.code(str(e))
+                import traceback
+                st.code(traceback.format_exc())
+            
             st.query_params.clear()
 
 # SEGUNDO: Mostrar sidebar
@@ -201,7 +207,7 @@ with st.sidebar:
             # Generar URL de autorización
             auth_url = auth.get_authorization_url()
             
-            # Botón grande y visible
+            # Botón HTML personalizado con la URL correcta
             st.markdown(
                 f'''
                 <a href="{auth_url}" target="_self">
@@ -226,24 +232,31 @@ with st.sidebar:
                 unsafe_allow_html=True
             )
             
+            # Debug info (opcional - ocultar en producción)
+            if DEBUG_MODE:
+                with st.expander("🔍 Debug - Ver URL generada"):
+                    st.code(auth_url)
+            
         except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
+            st.error(f"❌ Error generando URL de autorización")
             
             with st.expander("🔍 Información técnica"):
+                st.code(str(e))
+                import traceback
+                st.code(traceback.format_exc())
+                
                 # Verificar secrets
                 try:
                     if 'oauth' in st.secrets:
-                        st.success("✅ Secrets OAuth encontrados")
+                        st.success("✅ Secrets [oauth] encontrados")
+                        st.code(f"redirect_uri: {st.secrets['oauth']['redirect_uri']}")
+                    elif 'google_oauth' in st.secrets:
+                        st.warning("⚠️ Usando [google_oauth] (legacy)")
+                        st.code(f"redirect_uri: {st.secrets['google_oauth']['redirect_uri']}")
                     else:
-                        st.error("❌ Secrets OAuth no encontrados")
-                        st.info("💡 Verifica que sea [oauth] y no [google_oauth]")
+                        st.error("❌ No se encontraron secrets OAuth")
                 except Exception as secret_err:
                     st.error(f"Error leyendo secrets: {secret_err}")
-
-# ============================================================================
-# FIN DEL REEMPLAZO
-# El resto del código sigue igual
-# ============================================================================
 
 # ============================================================================
 # CONTENIDO PRINCIPAL - CON SELECTOR DE PROPIEDADES
