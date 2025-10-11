@@ -118,12 +118,15 @@ st.markdown("---")
 auth = GoogleAuthenticator()
 
 # ============================================================================
-# SIDEBAR - AUTENTICACIÓN
+# REEMPLAZAR SOLO LA SECCIÓN DE SIDEBAR - AUTENTICACIÓN
+# En tu app.py, reemplaza desde "with st.sidebar:" hasta antes de "if st.session_state.authenticated:"
 # ============================================================================
+
 with st.sidebar:
     st.header("🔐 Autenticación")
     
     if not st.session_state.authenticated:
+        # ✅ CORREGIDO: Verificar si hay credenciales guardadas
         saved_creds = auth.load_credentials()
         if saved_creds:
             st.session_state.credentials = saved_creds
@@ -168,23 +171,54 @@ with st.sidebar:
             6. Pégalo abajo y presiona Enter
             """)
         
-        if st.button("🔑 Iniciar sesión con Google", type="primary", use_container_width=True):
-            try:
-                auth_url = auth.get_authorization_url()
-                st.markdown(f"### [👉 Click aquí para autenticarte]({auth_url})")
-                st.info("⬆️ Click en el enlace, autoriza la app, y copia el código")
-            except FileNotFoundError as e:
-                st.error(f"❌ Error: {str(e)}")
-                st.info("💡 Asegúrate de tener `credentials.json` en la raíz del proyecto")
-            except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
+        # ✅ BOTÓN MEJORADO: Genera URL al cargar, no al hacer click
+        try:
+            # Generar URL de autorización AL CARGAR
+            auth_url = auth.get_authorization_url()
+            
+            # Botón con link directo
+            st.markdown(
+                f'<a href="{auth_url}" target="_blank">'
+                '<button style="background-color:#4285f4;color:white;padding:10px 20px;'
+                'border:none;border-radius:4px;cursor:pointer;width:100%;font-size:16px;">'
+                '🔑 Iniciar sesión con Google'
+                '</button></a>',
+                unsafe_allow_html=True
+            )
+            
+            st.info("👆 Click en el botón, autoriza la app, y copia el código de la URL")
+            
+        except FileNotFoundError as e:
+            st.error(f"❌ Error: {str(e)}")
+            st.info("💡 Asegúrate de tener `credentials.json` en la raíz o configurar secrets")
+        except Exception as e:
+            st.error(f"❌ Error generando URL: {str(e)}")
+            
+            # Debug info
+            with st.expander("🔍 Debug"):
+                st.code(f"Error: {type(e).__name__}: {str(e)}")
+                
+                # Verificar secrets
+                try:
+                    if 'oauth' in st.secrets:
+                        st.success("✅ Secrets 'oauth' encontrados")
+                        st.code(f"client_id: {st.secrets['oauth']['client_id'][:30]}...")
+                        st.code(f"redirect_uri: {st.secrets['oauth']['redirect_uri']}")
+                    else:
+                        st.error("❌ No se encontró 'oauth' en secrets")
+                        st.info("💡 Debe ser [oauth], no [google_oauth]")
+                except Exception as secret_err:
+                    st.error(f"Error leyendo secrets: {secret_err}")
         
         st.markdown("---")
+        
+        # ✅ INPUT DE CÓDIGO CORREGIDO
         auth_code = st.text_input(
             "Pega el código aquí:",
             type="password",
             placeholder="4/0AfJ...",
-            help="El código completo que aparece en la URL después de 'code='"
+            help="El código completo que aparece en la URL después de 'code='",
+            key="oauth_code_input"
         )
         
         if auth_code:
@@ -194,11 +228,23 @@ with st.sidebar:
                     st.session_state.credentials = creds
                     st.session_state.user_info = auth.get_user_info(creds)
                     st.session_state.authenticated = True
+                    
                     st.success("✅ ¡Autenticación exitosa!")
+                    st.balloons()
                     st.rerun()
+                    
                 except Exception as e:
                     st.error(f"❌ Error en autenticación: {str(e)}")
                     st.info("💡 Asegúrate de copiar el código completo")
+                    
+                    # Debug
+                    with st.expander("🔍 Ver error completo"):
+                        import traceback
+                        st.code(traceback.format_exc())
+
+# ============================================================================
+# FIN DEL REEMPLAZO - El resto del código app.py sigue igual
+# ============================================================================
 
 # ============================================================================
 # CONTENIDO PRINCIPAL
