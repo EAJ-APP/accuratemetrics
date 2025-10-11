@@ -1,5 +1,6 @@
 """
-Configuración de la aplicación - CON DEBUG DE URI
+Configuración de la aplicación AccurateMetrics - CORREGIDA
+Basada en el sistema que funciona en Modular
 """
 import streamlit as st
 
@@ -7,32 +8,25 @@ import streamlit as st
 CREDENTIALS_FILE = 'credentials.json'
 TOKEN_FILE = 'token.json'
 
-# Scopes básicos (sin Analytics por ahora)
+# ✅ SCOPES COMPLETOS - Incluye Analytics
 SCOPES = [
     'openid',
     'https://www.googleapis.com/auth/userinfo.email',
-    'https://www.googleapis.com/auth/userinfo.profile'
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'https://www.googleapis.com/auth/analytics.readonly'  # ← AGREGADO
 ]
 
 def get_redirect_uri():
-    """Obtener redirect URI según el entorno - CON DEBUG"""
+    """
+    Obtener redirect URI según el entorno
+    IMPORTANTE: Debe coincidir EXACTAMENTE con Google Cloud Console
+    """
     try:
-        if 'google_oauth' in st.secrets:
-            uri = st.secrets['google_oauth']['redirect_uri']
+        # CAMBIO CRÍTICO: Usar 'oauth' en lugar de 'google_oauth'
+        if 'oauth' in st.secrets:
+            uri = st.secrets['oauth']['redirect_uri']
             
-            # ⚠️ IMPORTANTE: NO modificar la URI aquí
-            # Debe coincidir EXACTAMENTE con Google Cloud Console
-            
-            # DEBUG: Mostrar en consola
-            print("=" * 60)
-            print("🔍 DEBUG REDIRECT URI")
-            print("=" * 60)
-            print(f"URI desde secrets: '{uri}'")
-            print(f"Longitud: {len(uri)}")
-            print(f"Termina en /: {uri.endswith('/')}")
-            print(f"Caracteres finales: {repr(uri[-5:])}")
-            print("=" * 60)
-            
+            # NO modificar la URI - debe ser exactamente como en Google Cloud
             return uri
     except Exception as e:
         print(f"⚠️ Error leyendo secrets: {e}")
@@ -41,26 +35,27 @@ def get_redirect_uri():
     return 'http://localhost:8501'
 
 def get_client_config():
-    """Obtener configuración OAuth desde secrets"""
+    """
+    Obtener configuración OAuth desde secrets
+    FORMATO CORREGIDO: compatible con google-auth-oauthlib
+    """
     try:
-        if 'google_oauth' in st.secrets:
+        # CAMBIO CRÍTICO: Usar 'oauth' en lugar de 'google_oauth'
+        if 'oauth' in st.secrets:
             redirect_uri = get_redirect_uri()
             
+            # ✅ FORMATO CORRECTO - igual que Modular
             config = {
                 "web": {
-                    "client_id": st.secrets["google_oauth"]["client_id"],
-                    "client_secret": st.secrets["google_oauth"]["client_secret"],
-                    "project_id": st.secrets["google_oauth"]["project_id"],
-                    "auth_uri": st.secrets["google_oauth"]["auth_uri"],
-                    "token_uri": st.secrets["google_oauth"]["token_uri"],
-                    "auth_provider_x509_cert_url": st.secrets["google_oauth"]["auth_provider_x509_cert_url"],
+                    "client_id": st.secrets["oauth"]["client_id"],
+                    "client_secret": st.secrets["oauth"]["client_secret"],
+                    "project_id": st.secrets["oauth"]["project_id"],
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
                     "redirect_uris": [redirect_uri]
                 }
             }
-            
-            # DEBUG adicional
-            print(f"✅ Client ID: {config['web']['client_id'][:30]}...")
-            print(f"✅ Redirect URI en config: '{redirect_uri}'")
             
             return config
             
