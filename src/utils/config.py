@@ -8,12 +8,13 @@ import streamlit as st
 CREDENTIALS_FILE = 'credentials.json'
 TOKEN_FILE = 'token.json'
 
-# ✅ SCOPES COMPLETOS - Incluye Analytics
+# ✅ SCOPES COMPLETOS - Incluye Analytics Admin
 SCOPES = [
     'openid',
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile',
-    'https://www.googleapis.com/auth/analytics.readonly'  # ← AGREGADO
+    'https://www.googleapis.com/auth/analytics.readonly',
+    'https://www.googleapis.com/auth/analytics.edit'  # ← Para Admin API
 ]
 
 def get_redirect_uri():
@@ -22,12 +23,17 @@ def get_redirect_uri():
     IMPORTANTE: Debe coincidir EXACTAMENTE con Google Cloud Console
     """
     try:
-        # CAMBIO CRÍTICO: Usar 'oauth' en lugar de 'google_oauth'
+        # Prioridad 1: secrets.toml con [oauth]
         if 'oauth' in st.secrets:
             uri = st.secrets['oauth']['redirect_uri']
-            
-            # NO modificar la URI - debe ser exactamente como en Google Cloud
+            # NO modificar - usar exactamente como está
             return uri
+            
+        # Prioridad 2: secrets.toml con [google_oauth] (legacy)
+        if 'google_oauth' in st.secrets:
+            uri = st.secrets['google_oauth']['redirect_uri']
+            return uri
+            
     except Exception as e:
         print(f"⚠️ Error leyendo secrets: {e}")
     
@@ -40,16 +46,22 @@ def get_client_config():
     FORMATO CORREGIDO: compatible con google-auth-oauthlib
     """
     try:
-        # CAMBIO CRÍTICO: Usar 'oauth' en lugar de 'google_oauth'
+        # Intentar primero con [oauth]
+        secrets_key = None
         if 'oauth' in st.secrets:
+            secrets_key = 'oauth'
+        elif 'google_oauth' in st.secrets:
+            secrets_key = 'google_oauth'
+        
+        if secrets_key:
             redirect_uri = get_redirect_uri()
             
             # ✅ FORMATO CORRECTO - igual que Modular
             config = {
                 "web": {
-                    "client_id": st.secrets["oauth"]["client_id"],
-                    "client_secret": st.secrets["oauth"]["client_secret"],
-                    "project_id": st.secrets["oauth"]["project_id"],
+                    "client_id": st.secrets[secrets_key]["client_id"],
+                    "client_secret": st.secrets[secrets_key]["client_secret"],
+                    "project_id": st.secrets[secrets_key]["project_id"],
                     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                     "token_uri": "https://oauth2.googleapis.com/token",
                     "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
