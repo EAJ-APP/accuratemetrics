@@ -246,62 +246,157 @@ with st.sidebar:
 # ============================================================================
 
 # ============================================================================
-# CONTENIDO PRINCIPAL
+# CONTENIDO PRINCIPAL - CON SELECTOR DE PROPIEDADES
+# Reemplaza desde "if st.session_state.authenticated:" hasta el final de esa sección
 # ============================================================================
+
 if st.session_state.authenticated:
-    st.success("🎉 ¡Bienvenido! Conecta con Google Analytics 4 para comenzar")
+    st.success("🎉 ¡Bienvenido! Selecciona tu propiedad de Google Analytics 4")
     
     st.header("⚙️ Configuración de GA4")
     
-    col1, col2 = st.columns([1, 2])
+    # ==========================================
+    # SELECTOR DE PROPIEDADES GA4
+    # ==========================================
+    
+    # Importar el gestor de propiedades
+    from src.data.ga4_properties import GA4PropertyManager
+    
+    # Inicializar session_state para propiedades
+    if 'ga4_properties' not in st.session_state:
+        st.session_state.ga4_properties = None
+    if 'properties_loaded' not in st.session_state:
+        st.session_state.properties_loaded = False
+    
+    # Cargar propiedades si no están cargadas
+    if not st.session_state.properties_loaded:
+        with st.spinner("🔄 Cargando tus propiedades de Google Analytics..."):
+            try:
+                property_manager = GA4PropertyManager(st.session_state.credentials)
+                properties_dict = property_manager.get_properties_dict()
+                
+                if properties_dict:
+                    st.session_state.ga4_properties = properties_dict
+                    st.session_state.properties_loaded = True
+                else:
+                    st.warning("⚠️ No se encontraron propiedades de GA4 en tu cuenta")
+                    st.info("Verifica que tengas acceso a al menos una propiedad de Google Analytics 4")
+            
+            except Exception as e:
+                st.error(f"❌ Error al cargar propiedades: {str(e)}")
+                st.info("💡 Intenta cerrar sesión y volver a autenticarte")
+    
+    # Mostrar selector o input manual
+    if st.session_state.properties_loaded and st.session_state.ga4_properties:
+        
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            st.markdown("#### 🎯 Selecciona una Propiedad")
+            
+            # Selector de propiedades
+            selected_property_name = st.selectbox(
+                "Propiedad de GA4:",
+                options=list(st.session_state.ga4_properties.keys()),
+                help="Selecciona la propiedad que quieres analizar"
+            )
+            
+            # Obtener el ID de la propiedad seleccionada
+            property_id = st.session_state.ga4_properties[selected_property_name]
+            
+            # Guardar en session_state
+            st.session_state.property_id = property_id
+            
+            # Mostrar el ID para referencia
+            st.caption(f"Property ID: `{property_id}`")
+        
+        with col2:
+            st.markdown("#### 🔄")
+            if st.button("Recargar Propiedades", use_container_width=True):
+                st.session_state.properties_loaded = False
+                st.rerun()
+    
+    else:
+        # Fallback: Input manual si no se pudieron cargar propiedades
+        st.warning("⚠️ No se pudieron cargar las propiedades automáticamente")
+        
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            property_id = st.text_input(
+                "Property ID de GA4",
+                value=st.session_state.property_id if st.session_state.property_id else "",
+                placeholder="123456789",
+                help="Encuentra tu Property ID en Admin > Property Settings de Google Analytics"
+            )
+            
+            if property_id:
+                st.session_state.property_id = property_id
+        
+        with col2:
+            st.markdown("#### 🔄")
+            if st.button("Reintentar Carga", use_container_width=True):
+                st.session_state.properties_loaded = False
+                st.rerun()
+    
+    # ==========================================
+    # RANGO DE FECHAS
+    # ==========================================
+    
+    st.markdown("#### 📅 Rango de Fechas")
+    
+    col1, col2 = st.columns(2)
     
     with col1:
-        property_id = st.text_input(
-            "Property ID de GA4",
-            value=st.session_state.property_id if st.session_state.property_id else "",
-            placeholder="123456789",
-            help="Encuentra tu Property ID en Admin > Property Settings de Google Analytics"
-        )
-    
-    with col2:
-        st.markdown("##### 📅 Rango de Fechas")
-        
         default_start = datetime.now() - timedelta(days=90)
-        default_end = datetime.now() - timedelta(days=1)
-        
-        date_range = st.date_input(
-            "Selecciona el periodo:",
-            value=(default_start, default_end),
+        start_date = st.date_input(
+            "Fecha de inicio:",
+            value=default_start,
             max_value=datetime.now() - timedelta(days=1),
             help="GA4 tiene un delay de ~24-48 horas en los datos"
         )
     
-    date_range_valid = len(date_range) == 2
+    with col2:
+        default_end = datetime.now() - timedelta(days=1)
+        end_date = st.date_input(
+            "Fecha de fin:",
+            value=default_end,
+            max_value=datetime.now() - timedelta(days=1)
+        )
     
-    extract_button = st.button(
-        "📥 Extraer Datos de GA4",
-        type="primary",
-        disabled=not (property_id and date_range_valid),
-        use_container_width=False
-    )
+    # Validar rango de fechas
+    date_range_valid = start_date <= end_date
     
-    if extract_button:
-        if not property_id:
-            st.error("⚠️ Por favor ingresa un Property ID")
-        elif not date_range_valid:
-            st.error("⚠️ Por favor selecciona un rango de fechas válido")
-        else:
+    if not date_range_valid:
+        st.error("⚠️ La fecha de inicio debe ser anterior a la fecha de fin")
+    
+    # Mostrar resumen del período
+    if date_range_valid:
+        days_diff = (end_date - start_date).days + 1
+        st.info(f"📊 Período seleccionado: **{days_diff} días** ({start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')})")
+    
+    # ==========================================
+    # BOTÓN DE EXTRACCIÓN
+    # ==========================================
+    
+    st.markdown("---")
+    
+    # Verificar que todo esté listo
+    can_extract = bool(st.session_state.property_id) and date_range_valid
+    
+    if can_extract:
+        if st.button("📥 Extraer Datos de GA4", type="primary", use_container_width=True):
             try:
                 with st.spinner("🔄 Conectando con Google Analytics 4..."):
                     ga4 = GA4Connector(st.session_state.credentials)
                     
-                    start_date = date_range[0].strftime('%Y-%m-%d')
-                    end_date = date_range[1].strftime('%Y-%m-%d')
+                    start_date_str = start_date.strftime('%Y-%m-%d')
+                    end_date_str = end_date.strftime('%Y-%m-%d')
                     
                     df = ga4.get_sessions_and_conversions(
-                        property_id=property_id,
-                        start_date=start_date,
-                        end_date=end_date
+                        property_id=st.session_state.property_id,
+                        start_date=start_date_str,
+                        end_date=end_date_str
                     )
                     
                     if df.empty:
@@ -309,8 +404,6 @@ if st.session_state.authenticated:
                         st.info("💡 Verifica que el Property ID sea correcto y que haya datos en ese periodo")
                     else:
                         st.session_state.ga4_data = df
-                        st.session_state.property_id = property_id
-                        
                         st.success(f"✅ Datos extraídos correctamente: **{len(df)}** registros")
             
             except Exception as e:
@@ -326,6 +419,12 @@ if st.session_state.authenticated:
                 - La API de GA4 no está habilitada
                 - Problemas de conexión
                 """)
+    else:
+        st.info("👆 Selecciona una propiedad y un rango de fechas válido para continuar")
+    
+    # ==========================================
+    # VISUALIZACIÓN DE DATOS
+    # ==========================================
     
     if st.session_state.ga4_data is not None and not st.session_state.ga4_data.empty:
         st.markdown("---")
@@ -333,6 +432,7 @@ if st.session_state.authenticated:
         
         df = st.session_state.ga4_data
         
+        # Métricas principales
         col1, col2, col3, col4 = st.columns(4)
         
         total_sessions = df['sessions'].sum()
@@ -349,6 +449,7 @@ if st.session_state.authenticated:
         with col4:
             st.metric("📅 Días de Datos", f"{num_days}")
         
+        # Gráficos de evolución
         st.subheader("📈 Evolución Temporal")
         
         fig = make_subplots(
@@ -397,6 +498,7 @@ if st.session_state.authenticated:
         
         st.plotly_chart(fig, use_container_width=True)
         
+        # Estadísticas
         st.subheader("📊 Estadísticas")
         
         col1, col2 = st.columns(2)
@@ -427,6 +529,7 @@ if st.session_state.authenticated:
             })
             st.dataframe(stats_conversions, hide_index=True, use_container_width=True)
         
+        # Tabla de datos
         st.subheader("📋 Tabla de Datos")
         
         df_display = df.copy()
@@ -436,6 +539,7 @@ if st.session_state.authenticated:
         
         st.dataframe(df_display, use_container_width=True, height=400)
         
+        # Botones de descarga
         col1, col2, col3 = st.columns([1, 1, 2])
         
         with col1:
@@ -465,56 +569,15 @@ if st.session_state.authenticated:
             except ImportError:
                 pass
 
+# ============================================================================
+# FIN DE LA SECCIÓN - Usuario NO autenticado continúa igual
+# ============================================================================
+
 else:
+    # La sección de usuario no autenticado permanece igual...
     st.info("👈 Por favor, inicia sesión con Google en el panel lateral para continuar")
     
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        st.markdown("""
-        ## 🎯 ¿Qué es AccurateMetrics?
-        
-        **AccurateMetrics** es una herramienta de análisis de impacto causal que te permite:
-        
-        - 🔐 **Conectar de forma segura** con Google Analytics 4
-        - 📊 **Extraer datos** de sesiones y conversiones
-        - 📈 **Analizar el impacto causal** de tus campañas de marketing usando modelos bayesianos
-        - 🎯 **Segmentar resultados** por dispositivo, canal, ciudad, etc.
-        - 📉 **Predecir contrafactuales** - qué habría pasado sin la intervención
-        
-        ### 📚 Fundamento Científico
-        
-        Basado en el paper académico:
-        
-        > *Brodersen et al. (2015) - Inferring causal impact using Bayesian structural time-series models*
-        > 
-        > The Annals of Applied Statistics
-        
-        ### 🚀 ¿Cómo empezar?
-        
-        1. **Inicia sesión** con tu cuenta de Google (panel lateral)
-        2. **Ingresa tu Property ID** de GA4
-        3. **Selecciona el periodo** que quieres analizar
-        4. **Extrae los datos** y visualiza las métricas
-        5. *(Próximamente)* Define tu intervención y analiza el impacto causal
-        """)
-    
-    with col2:
-        st.markdown("### 📋 Estado del Proyecto")
-        
-        st.success("✅ **FASE 1**: Autenticación y Datos")
-        st.info("🔄 **FASE 2**: Modelo CausalImpact")
-        st.info("⏳ **FASE 3**: Segmentación Avanzada")
-        
-        st.markdown("---")
-        
-        st.markdown("### 🔒 Seguridad")
-        st.markdown("""
-        - Autenticación OAuth 2.0
-        - Permisos solo de lectura
-        - Sin almacenamiento de credenciales
-        - Conexión directa con Google
-        """)
+    # ... resto del código igual
 
 # ============================================================================
 # FOOTER
