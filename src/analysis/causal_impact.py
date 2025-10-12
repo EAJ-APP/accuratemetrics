@@ -247,9 +247,17 @@ class CausalImpactAnalyzer:
             
             print(f"📊 Días post-intervención: {post_mask.sum()}")
             
-            # Obtener valores reales y predichos
-            actual = post_data['response'].values
-            predicted = post_data['preds'].values
+            # 🔥 CRÍTICO: Obtener valores reales desde los datos originales
+            # porque inferences no tiene 'response', solo tiene predicciones
+            actual_values = self.data.loc[post_data.index, self.metric_column].values
+            predicted_values = post_data['preds'].values
+            
+            print(f"📊 Actual shape: {actual_values.shape}")
+            print(f"📊 Predicted shape: {predicted_values.shape}")
+            
+            # Usar las variables correctas
+            actual = actual_values
+            predicted = predicted_values
             
             print(f"📊 Actual mean: {actual.mean():.2f}")
             print(f"📊 Predicted mean: {predicted.mean():.2f}")
@@ -330,6 +338,10 @@ class CausalImpactAnalyzer:
             # Obtener inferences
             result_df = self.impact_result.inferences.copy()
             
+            # 🔥 CRÍTICO: Añadir columna 'response' con los valores reales
+            # desde self.data (los datos originales)
+            result_df['response'] = self.data.loc[result_df.index, self.metric_column]
+            
             # Añadir columna de período
             result_df['period'] = 'pre'
             if self.intervention_date:
@@ -342,6 +354,8 @@ class CausalImpactAnalyzer:
             
         except Exception as e:
             print(f"❌ Error en get_plot_data: {e}")
+            import traceback
+            traceback.print_exc()
             return pd.DataFrame()
     
     def get_summary_text(self) -> str:
