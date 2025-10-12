@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, Iterable, Optional
 
-# Reutilizamos el mismo mapeo para mantener coherencia
+
 COLUMN_MAPPING: Dict[str, Iterable] = {
     "actual": ["actual", "response", "y", 0],
     "predicted": ["predicted", "preds", "point_pred", "point_prediction", 1],
@@ -28,8 +28,7 @@ def _pick_column(df: pd.DataFrame, key: str, required: bool = True) -> Optional[
 
     if required:
         raise ValueError(
-            f"No se encontró la columna para '{key}'. "
-            f"Columnas disponibles: {df.columns.tolist()}."
+            f"No se encontró la columna para '{key}'. Columnas disponibles: {df.columns.tolist()}."
         )
     return None
 
@@ -38,22 +37,17 @@ def standardize_causal_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
     Estandariza nombres de columnas a:
     actual, predicted, predicted_lower, predicted_upper, point_effect, cumulative_effect, p_value (opcional)
-
-    - No rellena con ceros columnas críticas: si faltan, intenta derivarlas (p. ej., point_effect = actual - predicted).
-    - Si no se pueden derivar, lanza ValueError (fail-fast).
     """
     df = df.copy()
     if not isinstance(df.index, pd.DatetimeIndex):
-        # Intentar parsear el índice si viene como col
         if "date" in df.columns:
             df = df.set_index(pd.to_datetime(df["date"]))
         else:
             try:
                 df.index = pd.to_datetime(df.index)
             except Exception:
-                raise ValueError("El índice del DataFrame debe ser fechas (DatetimeIndex) o incluir una columna 'date'.")
+                raise ValueError("El índice debe ser DatetimeIndex o incluir 'date'.")
 
-    # Básicos
     actual = _pick_column(df, "actual", required=False)
     predicted = _pick_column(df, "predicted", required=False)
     lower = _pick_column(df, "predicted_lower", required=False)
@@ -62,17 +56,14 @@ def standardize_causal_columns(df: pd.DataFrame) -> pd.DataFrame:
     cum_eff = _pick_column(df, "cumulative_effect", required=False)
     p_value = _pick_column(df, "p_value", required=False)
 
-    # Derivaciones mínimas
     if actual is None:
-        raise ValueError("Falta 'actual' (observado) y no se puede derivar.")
+        raise ValueError("Falta 'actual' (observado).")
     if predicted is None:
-        raise ValueError("Falta 'predicted' (predicho) y no se puede derivar.")
+        raise ValueError("Falta 'predicted' (predicho).")
 
     if point_eff is None:
         point_eff = actual - predicted
-
     if cum_eff is None:
-        # acumulado sobre TODO, pero en la página solo interpretaremos POST
         cum_eff = point_eff.cumsum()
 
     out = pd.DataFrame(
@@ -85,7 +76,6 @@ def standardize_causal_columns(df: pd.DataFrame) -> pd.DataFrame:
         index=df.index,
     )
 
-    # Columnas opcionales
     if lower is not None:
         out["predicted_lower"] = pd.to_numeric(lower, errors="coerce")
     if upper is not None:
@@ -93,48 +83,42 @@ def standardize_causal_columns(df: pd.DataFrame) -> pd.DataFrame:
     if p_value is not None:
         out["p_value"] = pd.to_numeric(p_value, errors="coerce")
 
-    # Orden y limpieza
     out = out.sort_index()
     return out
 
 
-def compute_effect_summary(df_std: pd.DataFrame, intervention_date: pd.Timestamp, alpha: float = 0.05) -> Dict[str, float]:
+def compute_effect_summary(df_std: pd.DataFrame, intervention_date: pd.Timestamp, alpha: float = 0.05):
     """
-    Calcula métricas de resumen SOLO en el periodo POST:
-    - avg_effect: media de point_effect en POST
-    - cum_effect: acumulado final en POST
-    - pct_change_mean: media del cambio porcentual (point_effect / predicted * 100) en POST
-    - is_significant: p<alpha si hay p_value; si no, heurística (IC si existe; si no, False)
+    Calcula métricas de resumen SOLO en POST:
+    - avg_effect (media de point_effect en POST)
+    - cum_effect (acumulado final en POST)
+    - pct_change_mean (media de (point_effect/predicted)*100 en POST)
+    - is_significant (p<alpha si hay p; si no, heurística con IC si existen; si no, 0)
     """
     if not isinstance(intervention_date, pd.Timestamp):
         intervention_date = pd.to_datetime(intervention_date)
 
     post = df_std.loc[df_std.index >= intervention_date].copy()
     if post.empty:
-        raise ValueError("No hay observaciones en el periodo POST. Revisa la fecha de intervención.")
+        raise ValueError("No hay observaciones en el periodo POST.")
 
-    # Métricas numéricas
     avg_effect = float(post["point_effect"].mean())
     cum_effect = float(post["cumulative_effect"].iloc[-1])
 
-    # % cambio con protección de ceros/NaN
     denom = post["predicted"].replace(0, np.nan).abs()
     pct_change = (post["point_effect"] / denom) * 100.0
     pct_change_mean = float(pct_change.dropna().mean()) if pct_change.notna().any() else float("nan")
 
-    # Significancia
     is_significant = 0
     if "p_value" in post.columns and post["p_value"].notna().any():
         p = float(post["p_value"].dropna().iloc[-1])
         is_significant = int(p < alpha)
     elif {"predicted_lower", "predicted_upper"}.issubset(post.columns):
-        # Heurística: si el IC del efecto (aproximado) no cruza 0 en la mayoría de puntos POST
-        # Aproximamos IC del efecto como (actual - upper, actual - lower)
         eff_lo = post["actual"] - post["predicted_upper"]
         eff_hi = post["actual"] - post["predicted_lower"]
         crosses_zero = (eff_lo <= 0) & (eff_hi >= 0)
         frac_no_cross = 1.0 - (crosses_zero.sum() / len(crosses_zero))
-        is_significant = int(frac_no_cross >= 0.8)  # umbral heurístico
+        is_significant = int(frac_no_cross >= 0.8)
     else:
         is_significant = 0
 
