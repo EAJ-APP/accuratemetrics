@@ -242,83 +242,31 @@ class CausalImpactAnalyzer:
     
     def get_plot_data(self) -> pd.DataFrame:
         """
-        ✅ FIX DEFINITIVO: Mapeo correcto para pycausalimpact 0.1.1
+        ✅ SOLUCIÓN DEFINITIVA: Retornar TODO el DataFrame de inferences SIN modificar
         """
         if not self.impact_result:
             return pd.DataFrame()
         
         try:
             if not hasattr(self.impact_result, 'inferences'):
-                return pd.DataFrame(columns=['actual', 'predicted', 'predicted_lower', 'predicted_upper', 'period'])
+                return pd.DataFrame()
             
-            # Obtener el DataFrame de inferences - ES EL DATO CRUDO DE CAUSALIMPACT
+            # ✅ SIMPLEMENTE RETORNAR EL DATAFRAME COMPLETO DE CAUSALIMPACT
+            # Ya tiene TODAS las columnas que necesitamos
             result_df = self.impact_result.inferences.copy()
             
-            print(f"🔍 DEBUG get_plot_data:")
-            print(f"   Columnas originales: {result_df.columns.tolist()}")
-            print(f"   Shape: {result_df.shape}")
-            print(f"   Index type: {type(result_df.index)}")
-            
-            # ✅ MAPEO CORRECTO PARA PYCAUSALIMPACT 0.1.1
-            # Las columnas reales son: response, point_pred, point_pred_lower, point_pred_upper
-            # PERO en el DataFrame aparecen como: preds, preds_lower, preds_upper, etc.
-            
-            # Crear el DataFrame final con las columnas que esperamos
-            final_df = pd.DataFrame(index=result_df.index)
-            
-            # Mapear 'actual' (datos reales)
-            if 'response' in result_df.columns:
-                final_df['actual'] = result_df['response']
-            elif self.metric_column in result_df.columns:
-                final_df['actual'] = result_df[self.metric_column]
-            else:
-                # Si no encontramos, usar la primera columna del input original
-                final_df['actual'] = self.data.loc[result_df.index, self.metric_column]
-            
-            # Mapear 'predicted' (predicciones)
-            if 'point_pred' in result_df.columns:
-                final_df['predicted'] = result_df['point_pred']
-            elif 'preds' in result_df.columns:
-                final_df['predicted'] = result_df['preds']
-            else:
-                final_df['predicted'] = 0
-            
-            # Mapear límites de confianza
-            if 'point_pred_lower' in result_df.columns:
-                final_df['predicted_lower'] = result_df['point_pred_lower']
-            elif 'preds_lower' in result_df.columns:
-                final_df['predicted_lower'] = result_df['preds_lower']
-            else:
-                final_df['predicted_lower'] = final_df['predicted'] * 0.9
-            
-            if 'point_pred_upper' in result_df.columns:
-                final_df['predicted_upper'] = result_df['point_pred_upper']
-            elif 'preds_upper' in result_df.columns:
-                final_df['predicted_upper'] = result_df['preds_upper']
-            else:
-                final_df['predicted_upper'] = final_df['predicted'] * 1.1
-            
-            # Añadir columna de período
-            final_df['period'] = 'pre'
+            # Solo añadir la columna de período
+            result_df['period'] = 'pre'
             if self.intervention_date:
-                final_df.loc[final_df.index >= self.intervention_date, 'period'] = 'post'
+                result_df.loc[result_df.index >= self.intervention_date, 'period'] = 'post'
             
-            # Calcular residuales
-            final_df['residuals'] = final_df['actual'] - final_df['predicted']
-            final_df['cumulative_residuals'] = final_df['residuals'].cumsum()
-            
-            print(f"   Columnas finales: {final_df.columns.tolist()}")
-            print(f"   Muestra de datos:")
-            print(f"     actual: {final_df['actual'].head().tolist()}")
-            print(f"     predicted: {final_df['predicted'].head().tolist()}")
-            
-            return final_df
+            return result_df
             
         except Exception as e:
             print(f"❌ Error en get_plot_data: {e}")
             import traceback
             traceback.print_exc()
-            return pd.DataFrame(columns=['actual', 'predicted', 'predicted_lower', 'predicted_upper', 'period'])
+            return pd.DataFrame()
     
     def get_summary_text(self) -> str:
         if not self.impact_result:
