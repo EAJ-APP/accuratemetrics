@@ -242,7 +242,7 @@ class CausalImpactAnalyzer:
     
     def get_plot_data(self) -> pd.DataFrame:
         """
-        ✅ SOLUCIÓN DEFINITIVA: Retornar TODO el DataFrame de inferences SIN modificar
+        ✅ SOLUCIÓN DEFINITIVA: Retornar inferences + añadir columna de valores reales
         """
         if not self.impact_result:
             return pd.DataFrame()
@@ -251,11 +251,16 @@ class CausalImpactAnalyzer:
             if not hasattr(self.impact_result, 'inferences'):
                 return pd.DataFrame()
             
-            # ✅ SIMPLEMENTE RETORNAR EL DATAFRAME COMPLETO DE CAUSALIMPACT
-            # Ya tiene TODAS las columnas que necesitamos
+            # Obtener el DataFrame de CausalImpact
             result_df = self.impact_result.inferences.copy()
             
-            # Solo añadir la columna de período
+            # ✅ CRÍTICO: Añadir la columna 'response' con los valores REALES
+            # CausalImpact solo genera predicciones, los valores reales vienen del input
+            if 'response' not in result_df.columns:
+                # Obtener los valores reales del DataFrame original
+                result_df['response'] = self.data.loc[result_df.index, self.metric_column]
+            
+            # Añadir columna de período
             result_df['period'] = 'pre'
             if self.intervention_date:
                 result_df.loc[result_df.index >= self.intervention_date, 'period'] = 'post'
