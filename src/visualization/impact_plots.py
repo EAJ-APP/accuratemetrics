@@ -218,7 +218,7 @@ class ImpactVisualizer:
         # Línea vertical de intervención
         # ===================================================================
         
-        # ✅ CORRECCIÓN: Usar add_shape en lugar de add_vline (más robusto)
+        # ✅ CORRECCIÓN: Usar add_shape en lugar de add_vline
         if isinstance(intervention_date, pd.Timestamp):
             intervention_dt = intervention_date.to_pydatetime()
         elif isinstance(intervention_date, str):
@@ -227,14 +227,17 @@ class ImpactVisualizer:
             intervention_dt = intervention_date
         
         # Añadir línea vertical manualmente en cada subplot
-        for row_num in range(1, 4):
+        # Nota: el primer eje Y es 'y', los demás son 'y2', 'y3', etc.
+        y_refs = ['y domain', 'y2 domain', 'y3 domain']
+        
+        for idx, (row_num, yref) in enumerate(zip([1, 2, 3], y_refs)):
             fig.add_shape(
                 type="line",
                 x0=intervention_dt,
                 x1=intervention_dt,
                 y0=0,
                 y1=1,
-                yref=f"y{row_num} domain",
+                yref=yref,
                 line=dict(color="red", width=2, dash="dash"),
                 row=row_num,
                 col=1
