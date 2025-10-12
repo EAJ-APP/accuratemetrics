@@ -218,23 +218,39 @@ class ImpactVisualizer:
         # Línea vertical de intervención
         # ===================================================================
         
-        # ✅ CORRECCIÓN CRÍTICA: Convertir a datetime de Python para Plotly
+        # ✅ CORRECCIÓN: Usar add_shape en lugar de add_vline (más robusto)
         if isinstance(intervention_date, pd.Timestamp):
             intervention_dt = intervention_date.to_pydatetime()
         elif isinstance(intervention_date, str):
             intervention_dt = pd.Timestamp(intervention_date).to_pydatetime()
         else:
-            # Ya es datetime de Python
             intervention_dt = intervention_date
         
-        for row in [1, 2, 3]:
-            fig.add_vline(
-                x=intervention_dt,
-                line_dash="dash",
-                line_color="red",
-                annotation_text="Intervención" if row == 1 else None,
-                row=row, col=1
+        # Añadir línea vertical manualmente en cada subplot
+        for row_num in range(1, 4):
+            fig.add_shape(
+                type="line",
+                x0=intervention_dt,
+                x1=intervention_dt,
+                y0=0,
+                y1=1,
+                yref=f"y{row_num} domain",
+                line=dict(color="red", width=2, dash="dash"),
+                row=row_num,
+                col=1
             )
+        
+        # Añadir anotación solo en el primer panel
+        fig.add_annotation(
+            x=intervention_dt,
+            y=1.05,
+            yref="y domain",
+            text="Intervención",
+            showarrow=False,
+            font=dict(color="red", size=12),
+            row=1,
+            col=1
+        )
         
         # ===================================================================
         # Layout final
