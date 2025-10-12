@@ -1,267 +1,568 @@
-# pages/2_📈_Causal_Impact.py
-from __future__ import annotations
-
+"""
+Página de Análisis de Impacto Causal
+AccurateMetrics - Fase 2
+PAGE 2
+"""
 import streamlit as st
 import pandas as pd
-import numpy as np
+from datetime import datetime, timedelta
+import sys
+import os
 
-from src.analysis.causal_impact import standardize_causal_columns, compute_effect_summary
-from src.visualization.impact_plots import (
-    plot_observed_vs_predicted,
-    plot_point_effect,
-    plot_cumulative_effect,
+# Añadir el directorio raíz al path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# ============================================================================
+# CONFIGURACIÓN DE LA PÁGINA
+# ============================================================================
+st.set_page_config(
+    page_title="Causal Impact - AccurateMetrics",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-st.set_page_config(page_title="Causal Impact", page_icon="📈", layout="wide")
-st.title("📈 Causal Impact")
-
-st.markdown(
-    """
-    Flujo: **login → elegir propiedad GA4 → Extraer datos → venir aquí → Ejecutar análisis**.
-    Esta página **recoge automáticamente** los datos que hayas extraído (de `st.session_state`), 
-    aunque no estén guardados bajo `ci_data`.
-    """
-)
-
-# ----------------------------------------------------------------------
-# 1) RECUPERACIÓN ROBUSTA: toma los datos tal como los dejó la extracción
-# ----------------------------------------------------------------------
-PREFERRED_KEYS = (
-    # claves típicas tras extracción GA4 (varias alternativas por si tu app usa otra)
-    "ci_data", "ga4_data", "ga4_df", "df_ga4", "ga4_results", "extract_data",
-    "data", "dataset", "df", "timeseries", "series", "report", "table"
-)
-
-def _try_to_dataframe(x):
-    if isinstance(x, pd.DataFrame):
-        return x
-    try:
-        df = pd.DataFrame(x)
-        # descarta falsos positivos (e.g., escalares)
-        if df.empty and not isinstance(x, (list, dict)):
-            return None
-        return df
-    except Exception:
-        return None
-
-def _is_timeseries(df: pd.DataFrame) -> bool:
-    if isinstance(df.index, pd.DatetimeIndex):
-        return True
-    cols_lower = [c.lower() for c in df.columns]
-    return any(c in cols_lower for c in ("date", "fecha", "ds"))
-
-def _has_numeric(df: pd.DataFrame) -> bool:
-    return any(pd.api.types.is_numeric_dtype(df[c]) for c in df.columns)
-
-def recover_extracted_df() -> pd.DataFrame | None:
-    # 1) preferidas explícitas
-    for k in PREFERRED_KEYS:
-        if k in st.session_state:
-            cand = _try_to_dataframe(st.session_state[k])
-            if cand is not None and _is_timeseries(cand) and _has_numeric(cand):
-                st.info(f"Usando datos de extracción: `st.session_state['{k}']`.")
-                return cand
-
-    # 2) si no, busca el mejor candidato entre TODO el session_state
-    candidates = []
-    for k, v in st.session_state.items():
-        cand = _try_to_dataframe(v)
-        if cand is None:
-            continue
-        score = 0
-        if _is_timeseries(cand): score += 1
-        if _has_numeric(cand):   score += 1
-        # ligera preferencia si la clave "suena" a datos GA4
-        for hint in ("ga4", "extract", "data", "df", "report", "table", "timeseries", "series"):
-            if hint in k.lower():
-                score += 1
-                break
-        if score >= 2:
-            candidates.append((k, cand, score))
-
-    if not candidates:
-        return None
-
-    candidates.sort(key=lambda x: x[2], reverse=True)
-    best_key, best_df, _ = candidates[0]
-    st.info(f"Usando datos de `st.session_state['{best_key}']` (mejor candidato).")
-    return best_df
-
-df_input = recover_extracted_df()
-if df_input is None:
-    st.warning(
-        "No encuentro datos de la extracción en `st.session_state`. "
-        "Vuelve a la página principal, pulsa **Extraer**, y regresa."
-    )
-    st.stop()
-
-# --------------------------------------------------------
-# 2) NORMALIZA FECHAS Y ASEGURA 'actual' (sin exigir ci_data)
-# --------------------------------------------------------
+# ============================================================================
+# VERIFICAR DEPENDENCIAS
+# ============================================================================
 try:
-    if not isinstance(df_input.index, pd.DatetimeIndex):
-        # intenta columna de fecha común
-        for cand in ("date", "Date", "fecha", "ds"):
-            if cand in df_input.columns:
-                df_input[cand] = pd.to_datetime(df_input[cand])
-                df_input = df_input.set_index(cand)
-                break
-        if not isinstance(df_input.index, pd.DatetimeIndex):
-            # como último recurso: parsea índice
-            df_input.index = pd.to_datetime(df_input.index)
-
-    # quita tz si viniera con zona horaria (evita desajustes)
-    if isinstance(df_input.index, pd.DatetimeIndex) and df_input.index.tz is not None:
-        df_input.index = df_input.index.tz_localize(None)
-
-    df_input = df_input.sort_index()
-except Exception:
-    st.error("No pude interpretar el índice/columna de fechas. Asegúrate de que haya fecha (columna o índice).")
+    from src.analysis.causal_impact import CausalImpactAnalyzer
+    from src.visualization.impact_plots import ImpactVisualizer
+    DEPENDENCIES_OK = True
+except ImportError as e:
+    DEPENDENCIES_OK = False
+    st.error(f"❌ Error importando módulos: {e}")
+    st.info("""
+    Por favor, asegúrate de:
+    1. Instalar las dependencias: `pip install -r requirements.txt`
+    2. Verificar que pycausalimpact esté instalado: `pip install pycausalimpact`
+    """)
     st.stop()
 
-# Asegura columna objetivo 'actual'
-if "actual" not in df_input.columns:
-    # intenta convenciones típicas de GA4
-    for cand in ("sessions", "totalUsers", "activeUsers", "screenPageViews", "eventCount", "value"):
-        if cand in df_input.columns:
-            df_input = df_input.rename(columns={cand: "actual"})
-            break
-    else:
-        # toma la primera numérica
-        num_cols = [c for c in df_input.columns if pd.api.types.is_numeric_dtype(df_input[c])]
-        if num_cols:
-            df_input = df_input.rename(columns={num_cols[0]: "actual"})
-        else:
-            st.error("No encuentro una columna numérica para usar como 'actual'.")
-            st.stop()
+# ============================================================================
+# TÍTULO Y DESCRIPCIÓN
+# ============================================================================
+st.title("📈 Análisis de Impacto Causal")
+st.markdown("""
+Analiza el impacto de intervenciones en tus métricas de Google Analytics usando 
+la metodología **Causal Impact** de Google.
+""")
 
-# --------------------------------------------------------
-# 3) UI: FECHA DE INTERVENCIÓN + ALPHA
-# --------------------------------------------------------
-min_date = df_input.index.min()
-max_date = df_input.index.max()
+# ============================================================================
+# VERIFICAR DATOS
+# ============================================================================
+if 'ga4_data' not in st.session_state or st.session_state.ga4_data is None:
+    st.warning("⚠️ No hay datos de GA4 cargados")
+    st.info("""
+    👉 Por favor, ve a la página principal y:
+    1. Autentícate con Google
+    2. Selecciona una propiedad de GA4
+    3. Extrae los datos
+    """)
+    
+    if st.button("🏠 Ir a la página principal"):
+        st.switch_page("app.py")
+    st.stop()
 
-col1, col2 = st.columns(2)
-with col1:
+# ============================================================================
+# SIDEBAR - CONFIGURACIÓN
+# ============================================================================
+with st.sidebar:
+    st.header("⚙️ Configuración del Análisis")
+    
+    # Selección de métrica
+    st.subheader("📊 Métrica a Analizar")
+    metric_column = st.selectbox(
+        "Selecciona la métrica:",
+        options=['sessions', 'conversions'],
+        format_func=lambda x: 'Sesiones' if x == 'sessions' else 'Conversiones',
+        help="Elige qué métrica quieres analizar"
+    )
+    
+    st.markdown("---")
+    
+    # Fecha de intervención
+    st.subheader("📅 Fecha de Intervención")
+    
+    # Obtener rango de fechas disponibles
+    df = st.session_state.ga4_data
+    min_date = df['date'].min()
+    max_date = df['date'].max()
+    
+    # Calcular fecha por defecto (mitad del período)
+    days_range = (max_date - min_date).days
+    default_intervention = min_date + timedelta(days=days_range // 2)
+    
     intervention_date = st.date_input(
-        "Fecha de intervención",
-        value=min_date if pd.notna(min_date) else None,
-        min_value=min_date if pd.notna(min_date) else None,
-        max_value=max_date if pd.notna(max_date) else None,
+        "¿Cuándo ocurrió la intervención?",
+        value=default_intervention,
+        min_value=min_date + timedelta(days=14),  # Necesitamos al menos 2 semanas pre
+        max_value=max_date - timedelta(days=7),   # Necesitamos al menos 1 semana post
+        help="La fecha cuando implementaste el cambio que quieres medir"
     )
-with col2:
-    alpha = st.number_input("Nivel de significación (alpha)", value=0.05, min_value=0.001, max_value=0.5, step=0.005)
-
-run = st.button("Ejecutar análisis")
-if not run:
-    st.info("Selecciona la fecha y pulsa **Ejecutar análisis**.")
-    st.stop()
-
-# --------------------------------------------------------
-# 4) SI NO HAY 'predicted', CALCÚLALO AHORA CON CAUSALIMPACT
-#    (periodos PRE/POST con Timestamps DEL ÍNDICE, no .date())
-# --------------------------------------------------------
-if "predicted" not in df_input.columns:
-    try:
-        from causalimpact import CausalImpact
-    except Exception as e:
-        st.error(
-            "Falta la dependencia 'causalimpact' o no se puede importar. "
-            "Añádela en requirements.txt. "
-            f"Detalle: {e}"
+    
+    st.markdown("---")
+    
+    # Configuración de períodos
+    st.subheader("⏱️ Períodos de Análisis")
+    
+    use_custom_periods = st.checkbox(
+        "Personalizar períodos",
+        value=False,
+        help="Por defecto se usa todo el período disponible"
+    )
+    
+    if use_custom_periods:
+        # Período pre-intervención
+        max_pre_days = (intervention_date - min_date.date()).days
+        pre_period_days = st.slider(
+            "Días pre-intervención:",
+            min_value=14,
+            max_value=max_pre_days,
+            value=min(30, max_pre_days),
+            help="Período de entrenamiento antes de la intervención"
         )
-        st.stop()
+        
+        # Período post-intervención
+        max_post_days = (max_date.date() - intervention_date).days
+        post_period_days = st.slider(
+            "Días post-intervención:",
+            min_value=7,
+            max_value=max_post_days,
+            value=min(14, max_post_days),
+            help="Período de evaluación después de la intervención"
+        )
+    else:
+        pre_period_days = None
+        post_period_days = None
+    
+    st.markdown("---")
+    
+    # Información sobre los períodos
+    st.info(f"""
+    **📊 Resumen de datos:**
+    - Total de días: {len(df)}
+    - Desde: {min_date.strftime('%d/%m/%Y')}
+    - Hasta: {max_date.strftime('%d/%m/%Y')}
+    """)
 
-    y = df_input["actual"]
+# ============================================================================
+# ÁREA PRINCIPAL
+# ============================================================================
 
-    # Regresores potenciales: todo lo que no sea columnas reservadas
-    reserved = {"actual", "predicted", "predicted_lower", "predicted_upper", "point_effect", "cumulative_effect", "p", "p_value"}
-    X_cols = [c for c in df_input.columns if c not in reserved and pd.api.types.is_numeric_dtype(df_input[c])]
-    X = df_input[X_cols] if X_cols else None
+# Tabs para organizar el contenido
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📊 Análisis", 
+    "📈 Visualizaciones", 
+    "📋 Resumen", 
+    "❓ Ayuda"
+])
 
-    data = pd.concat([y] + ([X] if X is not None else []), axis=1)
-    data = data.sort_index()
+# ============================================================================
+# TAB 1: ANÁLISIS
+# ============================================================================
+with tab1:
+    st.header("🔬 Ejecutar Análisis de Impacto Causal")
+    
+    # Mostrar configuración actual
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Métrica", metric_column.title())
+    with col2:
+        st.metric("Fecha Intervención", intervention_date.strftime('%d/%m/%Y'))
+    with col3:
+        period_text = "Personalizado" if use_custom_periods else "Completo"
+        st.metric("Período", period_text)
+    
+    st.markdown("---")
+    
+    # Botón de análisis
+    if st.button("🚀 Ejecutar Análisis", type="primary", use_container_width=True):
+        
+        with st.spinner("🔄 Preparando datos..."):
+            try:
+                # Crear analizador
+                analyzer = CausalImpactAnalyzer(
+                    data=st.session_state.ga4_data,
+                    metric_column=metric_column
+                )
+                
+                # Validar datos
+                is_valid, validation_msg = analyzer.validate_data_requirements()
+                
+                if not is_valid:
+                    st.error(f"❌ {validation_msg}")
+                    st.stop()
+                
+                st.success("✅ Datos validados correctamente")
+            
+            except Exception as e:
+                st.error(f"❌ Error preparando datos: {e}")
+                st.stop()
+        
+        with st.spinner("📈 Ejecutando análisis de Causal Impact..."):
+            try:
+                # Ejecutar análisis
+                results = analyzer.analyze_single_intervention(
+                    intervention_date=intervention_date.strftime('%Y-%m-%d'),
+                    pre_period_days=pre_period_days,
+                    post_period_days=post_period_days
+                )
+                
+                # Guardar resultados en session_state
+                st.session_state.causal_results = results
+                st.session_state.causal_analyzer = analyzer
+                st.session_state.causal_plot_data = analyzer.get_plot_data()
+                st.session_state.causal_intervention_date = pd.to_datetime(intervention_date)
+                
+                st.success("✅ Análisis completado exitosamente")
+                
+            except Exception as e:
+                st.error(f"❌ Error en el análisis: {e}")
+                st.info("""
+                Posibles causas:
+                - Período pre-intervención muy corto (mínimo 14 días)
+                - Datos insuficientes o con poca variabilidad
+                - Fecha de intervención muy cercana a los extremos
+                """)
+                st.stop()
+        
+        # Mostrar resumen inmediato
+        st.markdown("---")
+        st.subheader("📊 Resultados Principales")
+        
+        # Métricas principales
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            efecto_promedio = results['average']['rel_effect'] * 100
+            delta_color = "normal" if abs(efecto_promedio) < 5 else ("inverse" if efecto_promedio < 0 else "off")
+            st.metric(
+                "Efecto Promedio",
+                f"{efecto_promedio:.1f}%",
+                delta=f"{efecto_promedio:.1f}%",
+                delta_color=delta_color
+            )
+        
+        with col2:
+            efecto_acumulado = results['cumulative']['rel_effect'] * 100
+            st.metric(
+                "Efecto Acumulado",
+                f"{efecto_acumulado:.1f}%"
+            )
+        
+        with col3:
+            p_value = results['p_value']
+            is_significant = results['is_significant']
+            sig_text = "Sí ✅" if is_significant else "No ⚠️"
+            st.metric(
+                "Significativo",
+                sig_text,
+                delta=f"p={p_value:.3f}"
+            )
+        
+        with col4:
+            impacto_absoluto = results['cumulative']['abs_effect']
+            st.metric(
+                f"{metric_column.title()} Impacto",
+                f"{impacto_absoluto:,.0f}"
+            )
+        
+        # Resumen narrativo
+        st.markdown("---")
+        summary_text = analyzer.get_summary_text()
+        st.markdown(summary_text)
 
-    idx = data.index
-    # Si el índice viene con tz, quítala para evitar desajustes
-    if isinstance(idx, pd.DatetimeIndex) and idx.tz is not None:
-        idx = idx.tz_localize(None)
-        data.index = idx
+# ============================================================================
+# TAB 2: VISUALIZACIONES
+# ============================================================================
+with tab2:
+    st.header("📈 Visualizaciones del Impacto")
+    
+    if 'causal_results' not in st.session_state:
+        st.info("👆 Ejecuta primero el análisis en la pestaña 'Análisis'")
+    else:
+        visualizer = ImpactVisualizer()
+        
+        # Debug: Ver qué datos tenemos
+        with st.expander("🔍 Debug: Ver estructura de datos", expanded=False):
+            if 'causal_plot_data' in st.session_state:
+                plot_data = st.session_state.causal_plot_data
+                st.write(f"Tipo de plot_data: {type(plot_data)}")
+                st.write(f"Shape: {plot_data.shape if hasattr(plot_data, 'shape') else 'N/A'}")
+                if not plot_data.empty:
+                    st.write(f"Columnas: {plot_data.columns.tolist()}")
+                    st.write("Primeras 5 filas:")
+                    st.dataframe(plot_data.head())
+                else:
+                    st.write("DataFrame está vacío")
+            else:
+                st.write("No hay datos de plot en session_state")
+        
+        # Gráfico principal
+        try:
+            st.subheader("1. Serie Temporal Completa")
+            
+            # Verificar que tenemos datos antes de graficar
+            if 'causal_plot_data' in st.session_state and not st.session_state.causal_plot_data.empty:
+                fig_main = visualizer.plot_impact_analysis(
+                    plot_data=st.session_state.causal_plot_data,
+                    intervention_date=st.session_state.causal_intervention_date,
+                    metric_name=metric_column.title()
+                )
+                st.plotly_chart(fig_main, use_container_width=True)
+            else:
+                st.warning("⚠️ No hay datos suficientes para crear el gráfico principal")
+        except Exception as e:
+            st.error(f"Error creando gráfico principal: {str(e)}")
+            with st.expander("Ver detalles del error"):
+                import traceback
+                st.code(traceback.format_exc())
+        
+        # Gráficos secundarios
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            try:
+                st.subheader("2. Resumen de Efectos")
+                fig_summary = visualizer.plot_summary_metrics(
+                    st.session_state.causal_results
+                )
+                st.plotly_chart(fig_summary, use_container_width=True)
+            except Exception as e:
+                st.error(f"Error en gráfico de resumen: {str(e)[:100]}")
+        
+        with col2:
+            try:
+                st.subheader("3. Comparación Pre vs Post")
+                fig_comparison = visualizer.plot_period_comparison(
+                    data=st.session_state.ga4_data,
+                    intervention_date=st.session_state.causal_intervention_date,
+                    metric_column=metric_column
+                )
+                st.plotly_chart(fig_comparison, use_container_width=True)
+            except Exception as e:
+                st.error(f"Error en comparación: {str(e)[:100]}")
 
-    # 'intervention_date' viene de st.date_input (date); conviértelo a Timestamp
-    intervention_ts = pd.Timestamp(intervention_date)
+# ============================================================================
+# TAB 3: RESUMEN
+# ============================================================================
+with tab3:
+    st.header("📋 Resumen Detallado")
+    
+    if 'causal_results' not in st.session_state:
+        st.info("👆 Ejecuta primero el análisis en la pestaña 'Análisis'")
+    else:
+        results = st.session_state.causal_results
+        
+        # Información de períodos
+        st.subheader("📅 Períodos Analizados")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("**Pre-intervención:**")
+            st.write(f"Desde: {results['periods']['pre_period']['start']}")
+            st.write(f"Hasta: {results['periods']['pre_period']['end']}")
+            st.write(f"Días: {results['periods']['pre_period']['days']}")
+        
+        with col2:
+            st.markdown("**Intervención:**")
+            st.write(f"Fecha: {results['periods']['intervention_date']}")
+        
+        with col3:
+            st.markdown("**Post-intervención:**")
+            st.write(f"Desde: {results['periods']['post_period']['start']}")
+            st.write(f"Hasta: {results['periods']['post_period']['end']}")
+            st.write(f"Días: {results['periods']['post_period']['days']}")
+        
+        st.markdown("---")
+        
+        # Tabla de resultados detallados
+        st.subheader("📊 Métricas Detalladas")
+        
+        # Crear DataFrame con resultados
+        metrics_data = []
+        
+        # Métricas promedio
+        avg = results['average']
+        metrics_data.append({
+            'Tipo': 'Promedio Diario',
+            'Real': f"{avg['actual']:,.1f}",
+            'Predicho': f"{avg['predicted']:,.1f}",
+            'Efecto Absoluto': f"{avg['abs_effect']:,.1f}",
+            'Efecto Relativo': f"{avg['rel_effect']*100:.1f}%",
+            'IC Inferior': f"{avg['rel_effect_lower']*100:.1f}%",
+            'IC Superior': f"{avg['rel_effect_upper']*100:.1f}%"
+        })
+        
+        # Métricas acumuladas
+        cum = results['cumulative']
+        metrics_data.append({
+            'Tipo': 'Acumulado Total',
+            'Real': f"{cum['actual']:,.0f}",
+            'Predicho': f"{cum['predicted']:,.0f}",
+            'Efecto Absoluto': f"{cum['abs_effect']:,.0f}",
+            'Efecto Relativo': f"{cum['rel_effect']*100:.1f}%",
+            'IC Inferior': f"{cum['rel_effect_lower']*100:.1f}%",
+            'IC Superior': f"{cum['rel_effect_upper']*100:.1f}%"
+        })
+        
+        df_metrics = pd.DataFrame(metrics_data)
+        st.dataframe(df_metrics, use_container_width=True, hide_index=True)
+        
+        st.markdown("---")
+        
+        # Interpretación
+        st.subheader("🎯 Interpretación de Resultados")
+        
+        if results['is_significant']:
+            if results['average']['rel_effect'] > 0:
+                st.success("""
+                ✅ **Impacto Positivo Significativo**
+                
+                La intervención tuvo un efecto positivo estadísticamente significativo en las {}.
+                Puedes confiar en que el cambio observado no se debe al azar.
+                """.format(metric_column))
+            else:
+                st.warning("""
+                ⚠️ **Impacto Negativo Significativo**
+                
+                La intervención tuvo un efecto negativo estadísticamente significativo en las {}.
+                El cambio observado indica una disminución real en la métrica.
+                """.format(metric_column))
+        else:
+            st.info("""
+            ℹ️ **Impacto No Significativo**
+            
+            No hay evidencia estadística suficiente para afirmar que la intervención 
+            tuvo un efecto real en las {}. El cambio observado podría deberse al azar 
+            o a la variabilidad natural de los datos.
+            """.format(metric_column))
+        
+        # Exportar resultados
+        st.markdown("---")
+        st.subheader("💾 Exportar Resultados")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Preparar datos para exportar
+            export_data = st.session_state.causal_plot_data.copy()
+            export_data['intervention'] = export_data.index >= st.session_state.causal_intervention_date
+            
+            csv = export_data.to_csv()
+            st.download_button(
+                label="📥 Descargar Datos (CSV)",
+                data=csv,
+                file_name=f"causal_impact_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        
+        with col2:
+            # Crear resumen en texto
+            report_text = f"""
+REPORTE DE ANÁLISIS DE IMPACTO CAUSAL
+=====================================
+Fecha de generación: {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
-    # Posición donde empieza el POST (primer índice >= intervention_ts)
-    post_start_pos = idx.searchsorted(intervention_ts, side="left")
-    pre_end_pos = post_start_pos - 1
+CONFIGURACIÓN
+-------------
+Métrica analizada: {metric_column}
+Fecha de intervención: {results['periods']['intervention_date']}
+Período pre-intervención: {results['periods']['pre_period']['days']} días
+Período post-intervención: {results['periods']['post_period']['days']} días
 
-    if pre_end_pos < 0:
-        st.error("No hay datos PRE anteriores a la fecha de intervención seleccionada.")
-        st.stop()
-    if post_start_pos >= len(idx):
-        st.error("No hay datos POST en/tras la fecha de intervención seleccionada.")
-        st.stop()
+RESULTADOS PRINCIPALES
+----------------------
+Efecto promedio: {results['average']['rel_effect']*100:.1f}%
+Intervalo de confianza: [{results['average']['rel_effect_lower']*100:.1f}%, {results['average']['rel_effect_upper']*100:.1f}%]
 
-    # Usar exactamente los elementos del índice (Timestamps) que EXISTEN
-    pre_period = [idx[0], idx[pre_end_pos]]
-    post_period = [idx[post_start_pos], idx[-1]]
+Efecto acumulado: {results['cumulative']['abs_effect']:,.0f} {metric_column}
+Efecto relativo acumulado: {results['cumulative']['rel_effect']*100:.1f}%
 
-    # Construir y ejecutar CausalImpact con periodos válidos
-    ci = CausalImpact(data, pre_period, post_period)
-    infer = ci.inferences
+P-value: {results['p_value']:.4f}
+Significancia estadística: {'Sí' if results['is_significant'] else 'No'}
 
-    # Trae columnas relevantes si existen
-    cols_ci = [c for c in ["point_pred", "point_pred_lower", "point_pred_upper", "point_effect", "cumulative_effect", "p"] if c in infer.columns]
-    df_input = df_input.join(infer[cols_ci], how="left").rename(
-        columns={
-            "point_pred": "predicted",
-            "point_pred_lower": "predicted_lower",
-            "point_pred_upper": "predicted_upper",
-            "p": "p_value",
-        }
-    )
+INTERPRETACIÓN
+--------------
+{st.session_state.causal_analyzer.get_summary_text()}
+            """
+            
+            st.download_button(
+                label="📄 Descargar Reporte (TXT)",
+                data=report_text,
+                file_name=f"reporte_causal_impact_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                mime="text/plain",
+                use_container_width=True
+            )
 
-# --------------------------------------------------------
-# 5) ESTANDARIZA + RESUMEN (solo POST) + GRÁFICOS (autoejes)
-# --------------------------------------------------------
-with st.spinner("Normalizando columnas y calculando métricas..."):
-    try:
-        df_std = standardize_causal_columns(df_input)
-    except Exception as e:
-        st.error(f"Error al estandarizar columnas: {e}")
-        st.write("Columnas disponibles:", list(df_input.columns))
-        st.stop()
+# ============================================================================
+# TAB 4: AYUDA
+# ============================================================================
+with tab4:
+    st.header("❓ Ayuda y Documentación")
+    
+    st.markdown("""
+    ### 📚 ¿Qué es Causal Impact?
+    
+    **Causal Impact** es una metodología desarrollada por Google para estimar el efecto causal 
+    de una intervención en una serie temporal. Utiliza un enfoque bayesiano para crear un 
+    modelo contrafactual (qué hubiera pasado sin la intervención) y lo compara con los 
+    datos observados.
+    
+    ### 🎯 ¿Cuándo usar este análisis?
+    
+    Este análisis es útil cuando quieres medir el impacto de:
+    - 🚀 Lanzamiento de campañas de marketing
+    - 🔄 Cambios en el sitio web
+    - 📱 Actualizaciones de producto
+    - 💰 Cambios de precio
+    - 📰 Eventos de PR o noticias
+    
+    ### 📊 Requisitos de datos
+    
+    Para obtener resultados confiables necesitas:
+    - **Mínimo 21 días de datos** (idealmente más de 30)
+    - **Al menos 14 días pre-intervención** para entrenar el modelo
+    - **Al menos 7 días post-intervención** para evaluar el impacto
+    - **Datos con variabilidad** (no todos los valores iguales)
+    
+    ### 📈 Interpretación de resultados
+    
+    **Efecto Promedio:**
+    - Cambio porcentual promedio diario en la métrica
+    - Positivo = mejora, Negativo = empeoramiento
+    
+    **Efecto Acumulado:**
+    - Suma total del impacto durante todo el período post-intervención
+    - Útil para entender el impacto total en términos absolutos
+    
+    **P-value y Significancia:**
+    - P-value < 0.05 = Resultado estadísticamente significativo
+    - P-value ≥ 0.05 = No hay evidencia suficiente de impacto
+    
+    **Intervalos de Confianza:**
+    - Rango donde probablemente está el efecto real (95% de confianza)
+    - Si incluye el 0, el efecto podría no ser real
+    
+    ### 🔧 Consejos para mejores resultados
+    
+    1. **Más datos = Mejor modelo**: Intenta tener al menos 30-60 días pre-intervención
+    2. **Evita múltiples cambios**: Analiza una intervención a la vez
+    3. **Considera la estacionalidad**: El modelo intenta detectarla automáticamente
+    4. **Valida los supuestos**: Revisa que no haya otros eventos importantes en el período
+    
+    ### 📖 Referencias
+    
+    - [Paper original de Google](https://google.github.io/CausalImpact/CausalImpact.html)
+    - [Documentación de pycausalimpact](https://github.com/dafiti/causalimpact)
+    """)
 
-    with st.expander("Ver DataFrame estandarizado (debug)"):
-        st.write(df_std.head())
-        st.write(df_std.dtypes)
-
-    try:
-        summary = compute_effect_summary(df_std, pd.to_datetime(intervention_date), alpha=float(alpha))
-    except Exception as e:
-        st.error(f"Error al calcular el resumen POST: {e}")
-        st.stop()
-
-# KPIs
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("Efecto promedio (POST)", f"{summary['avg_effect']:.2f}")
-k2.metric("Efecto acumulado (POST)", f"{summary['cum_effect']:.2f}")
-pct_display = "-" if (np.isnan(summary["pct_change_mean"]) or pd.isna(summary["pct_change_mean"])) else f"{summary['pct_change_mean']:.2f}%"
-k3.metric("% cambio medio (POST)", pct_display)
-k4.metric("Significativo", "Sí ✅" if summary["is_significant"] else "No ❌")
-st.caption("Las métricas se calculan **solo sobre el periodo POST** desde la fecha seleccionada.")
-
-# Gráficos (usar width='stretch' como recomienda Streamlit)
-g1, g2 = st.columns((2, 1))
-with g1:
-    fig1 = plot_observed_vs_predicted(df_std, pd.to_datetime(intervention_date))
-    st.pyplot(fig1, width="stretch")
-
-with g2:
-    fig2 = plot_point_effect(df_std, pd.to_datetime(intervention_date))
-    st.pyplot(fig2, width="stretch")
-
-fig3 = plot_cumulative_effect(df_std, pd.to_datetime(intervention_date))
-st.pyplot(fig3, width="stretch")
-
-st.success("Análisis completado.")
+# ============================================================================
+# FOOTER
+# ============================================================================
+st.markdown("---")
+st.caption("AccurateMetrics v0.2 - Análisis de Impacto Causal | Powered by Google's CausalImpact")
