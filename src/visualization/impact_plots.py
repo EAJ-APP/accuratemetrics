@@ -1,155 +1,430 @@
-# src/visualization/impact_plots.py
-from __future__ import annotations
-
-import numpy as np
+"""
+Visualizaciones para Causal Impact - VERSIÓN COMPLETAMENTE CORREGIDA
+"""
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import pandas as pd
-import matplotlib.pyplot as plt
-from typing import Dict, Optional, Tuple, Iterable
+import numpy as np
+from typing import Optional, Dict, Any
 
 
-# --- Mapeo de columnas esperadas ---
-COLUMN_MAPPING: Dict[str, Iterable] = {
-    "actual": ["actual", "response", "y", 0],
-    "predicted": ["predicted", "preds", "point_pred", "point_prediction", 1],
-    "predicted_lower": ["predicted_lower", "preds_lower", "point_pred_lower", 2],
-    "predicted_upper": ["predicted_upper", "preds_upper", "point_pred_upper", 3],
-    "point_effect": ["point_effect", "effect", "point_effects"],
-    "cumulative_effect": ["cumulative_effect", "cum_effect", "post_cum_effect"],
-}
-
-
-def _get_column(df: pd.DataFrame, key: str, required: bool = True) -> Optional[pd.Series]:
+class ImpactVisualizer:
     """
-    Devuelve la serie para la clave 'key' según COLUMN_MAPPING.
-    - Si 'required' es True y no se encuentra, lanza ValueError.
-    - Si 'required' es False y no se encuentra, devuelve None.
+    Clase para crear visualizaciones de Causal Impact
     """
-    candidates = COLUMN_MAPPING.get(key, [])
-    for col_name in candidates:
-        if isinstance(col_name, int):
-            if col_name < len(df.columns):
-                return df.iloc[:, col_name]
-        elif col_name in df.columns:
-            return df[col_name]
-
-    if required:
-        raise ValueError(
-            f"No se encontró la columna para '{key}'. "
-            f"Columnas disponibles: {df.columns.tolist()}. "
-            f"Añade un alias válido en COLUMN_MAPPING o normaliza antes."
+    
+    @staticmethod
+    def plot_impact_analysis(
+        plot_data: pd.DataFrame,
+        intervention_date: pd.Timestamp,
+        metric_name: str = "Métrica",
+        title: Optional[str] = None
+    ) -> go.Figure:
+        """
+        Crea el gráfico principal del análisis de impacto
+        
+        Args:
+            plot_data: DataFrame con los datos del análisis
+            intervention_date: Fecha de la intervención
+            metric_name: Nombre de la métrica analizada
+            title: Título del gráfico
+            
+        Returns:
+            Figura de Plotly
+        """
+        # Verificar y mapear columnas según lo que esté disponible
+        column_mapping = {
+            'actual': ['actual', 'response', 'y', 0],
+            'predicted': ['predicted', 'preds', 'point_pred', 'point_prediction', 1],
+            'predicted_lower': ['predicted_lower', 'preds_lower', 'point_pred_lower', 2],
+            'predicted_upper': ['predicted_upper', 'preds_upper', 'point_pred_upper', 3]
+        }
+        
+        # Función helper para obtener la columna correcta
+        def get_column(df, key):
+            for col_name in column_mapping[key]:
+                if isinstance(col_name, int):
+                    # Acceso por índice numérico
+                    if col_name < len(df.columns):
+                        col_data = df.iloc[:, col_name]
+                        print(f"DEBUG {key}: Usando columna por índice {col_name}, valores: {col_data.head().tolist()}")
+                        return col_data
+                elif col_name in df.columns:
+                    col_data = df[col_name]
+                    print(f"DEBUG {key}: Usando columna '{col_name}', valores: {col_data.head().tolist()}")
+                    return col_data
+            # Si no encuentra la columna, retorna una serie de ceros
+            print(f"⚠️ ADVERTENCIA: No se encontró columna para {key}")
+            print(f"   Columnas disponibles: {df.columns.tolist()}")
+            return pd.Series(0, index=df.index)
+        
+        # Obtener las columnas necesarias
+        actual_data = get_column(plot_data, 'actual')
+        predicted_data = get_column(plot_data, 'predicted')
+        predicted_lower = get_column(plot_data, 'predicted_lower')
+        predicted_upper = get_column(plot_data, 'predicted_upper')
+        
+        # Si no hay límites de confianza, crear aproximaciones
+        if (predicted_lower == 0).all():
+            predicted_lower = predicted_data * 0.9
+        if (predicted_upper == 0).all():
+            predicted_upper = predicted_data * 1.1
+        
+        # Crear subplots
+        fig = make_subplots(
+            rows=3, cols=1,
+            subplot_titles=(
+                'Observado vs Predicho',
+                'Efecto Puntual (Diferencia)',
+                'Efecto Acumulado'
+            ),
+            vertical_spacing=0.1,
+            row_heights=[0.4, 0.3, 0.3]
         )
-    return None
-
-
-def _padded_limits(*series: Iterable[pd.Series], pad_ratio: float = 0.05) -> Optional[Tuple[float, float]]:
-    """
-    Calcula límites ymin, ymax con padding para ajustar el eje Y a los datos.
-    Si no hay datos válidos, devuelve None y deja que Matplotlib autoescale.
-    """
-    vals_list = []
-    for s in series:
-        if s is None:
-            continue
-        s = pd.Series(s).dropna()
-        if len(s):
-            vals_list.append(s)
-
-    if not vals_list:
-        return None
-
-    vals = pd.concat(vals_list, axis=0)
-    vmin, vmax = float(vals.min()), float(vals.max())
-    if not np.isfinite(vmin) or not np.isfinite(vmax):
-        return None
-
-    if vmin == vmax:
-        delta = 1.0 if vmax == 0 else abs(vmax) * 0.1
-        return (vmin - delta, vmax + delta)
-
-    pad = (vmax - vmin) * pad_ratio
-    return (vmin - pad, vmax + pad)
-
-
-def plot_observed_vs_predicted(df: pd.DataFrame, intervention_date: Optional[pd.Timestamp] = None) -> plt.Figure:
-    """Gráfico Observado vs Predicho con bandas opcionales."""
-    actual = _get_column(df, "actual", required=True)
-    predicted = _get_column(df, "predicted", required=True)
-    lower = _get_column(df, "predicted_lower", required=False)
-    upper = _get_column(df, "predicted_upper", required=False)
-
-    fig, ax = plt.subplots(figsize=(9, 4.2))
-    ax.plot(df.index, actual, label="Observado", linewidth=2)
-    ax.plot(df.index, predicted, label="Predicho", linewidth=2, linestyle="--")
-
-    if lower is not None and upper is not None:
-        ax.fill_between(df.index, lower, upper, alpha=0.15, label="IC Predicho")
-
-    if intervention_date is not None:
-        ax.axvline(pd.to_datetime(intervention_date), linestyle=":", linewidth=1.5, label="Intervención")
-
-    limits = _padded_limits(actual, predicted, lower, upper)
-    if limits:
-        ax.set_ylim(*limits)
-    ax.margins(x=0.02)
-    ax.set_title("Observado vs Predicho")
-    ax.set_xlabel("Fecha")
-    ax.set_ylabel("Valor")
-    ax.legend()
-    fig.tight_layout()
-    return fig
-
-
-def plot_point_effect(df: pd.DataFrame, intervention_date: Optional[pd.Timestamp] = None) -> plt.Figure:
-    """Gráfico del Efecto Puntual."""
-    point_eff = _get_column(df, "point_effect", required=True)
-
-    fig, ax = plt.subplots(figsize=(9, 3.6))
-    ax.plot(df.index, point_eff, label="Efecto puntual", linewidth=2)
-
-    if intervention_date is not None:
-        ax.axvline(pd.to_datetime(intervention_date), linestyle=":", linewidth=1.5, label="Intervención")
-
-    limits = _padded_limits(point_eff)
-    if limits:
-        ax.set_ylim(*limits)
-    ax.margins(x=0.02)
-    ax.set_title("Efecto puntual")
-    ax.set_xlabel("Fecha")
-    ax.set_ylabel("Δ (observado - predicho)")
-    ax.legend()
-    fig.tight_layout()
-    return fig
-
-
-def plot_cumulative_effect(df: pd.DataFrame, intervention_date: Optional[pd.Timestamp] = None) -> plt.Figure:
-    """Gráfico del Efecto Acumulado."""
-    cum_eff = _get_column(df, "cumulative_effect", required=True)
-
-    fig, ax = plt.subplots(figsize=(9, 3.6))
-    ax.plot(df.index, cum_eff, label="Efecto acumulado", linewidth=2)
-
-    if intervention_date is not None:
-        ax.axvline(pd.to_datetime(intervention_date), linestyle=":", linewidth=1.5, label="Intervención")
-
-    limits = _padded_limits(cum_eff)
-    if limits:
-        ax.set_ylim(*limits)
-    ax.margins(x=0.02)
-    ax.set_title("Efecto acumulado")
-    ax.set_xlabel("Fecha")
-    ax.set_ylabel("Σ Δ")
-    ax.legend()
-    fig.tight_layout()
-    return fig
-
-
-def plot_impact_dashboard(df: pd.DataFrame, intervention_date: Optional[pd.Timestamp] = None) -> Dict[str, plt.Figure]:
-    """
-    Devuelve las 3 figuras principales para el dashboard.
-    """
-    figs = {
-        "observado_vs_predicho": plot_observed_vs_predicted(df, intervention_date),
-        "efecto_puntual": plot_point_effect(df, intervention_date),
-        "efecto_acumulado": plot_cumulative_effect(df, intervention_date),
-    }
-    return figs
+        
+        # ✅ CORRECCIÓN: Convertir índice a lista de datetime de Python
+        dates = plot_data.index
+        
+        # Convertir a datetime de Python (no pandas Timestamp)
+        if isinstance(dates, pd.DatetimeIndex):
+            dates_python = dates.to_pydatetime()
+            dates_list = dates_python.tolist()
+        elif hasattr(dates, 'tolist'):
+            dates_list = dates.tolist()
+        else:
+            dates_list = list(dates)
+        
+        # ===================================================================
+        # Panel 1: Observado vs Predicho
+        # ===================================================================
+        
+        # Línea de valores observados
+        fig.add_trace(
+            go.Scatter(
+                x=dates_list,  # Usar lista de datetime de Python
+                y=actual_data,
+                mode='lines',
+                name='Observado',
+                line=dict(color='black', width=2),
+                showlegend=True
+            ),
+            row=1, col=1
+        )
+        
+        # Línea de predicción
+        fig.add_trace(
+            go.Scatter(
+                x=dates_list,
+                y=predicted_data,
+                mode='lines',
+                name='Predicho',
+                line=dict(color='blue', width=2, dash='dash'),
+                showlegend=True
+            ),
+            row=1, col=1
+        )
+        
+        # Banda de confianza
+        upper_values = predicted_upper.values.tolist()
+        lower_values = predicted_lower.values.tolist()
+        
+        fig.add_trace(
+            go.Scatter(
+                x=dates_list + dates_list[::-1],
+                y=upper_values + lower_values[::-1],
+                fill='toself',
+                fillcolor='rgba(0, 100, 255, 0.2)',
+                line=dict(color='rgba(255,255,255,0)'),
+                showlegend=False,
+                name='IC 95%'
+            ),
+            row=1, col=1
+        )
+        
+        # ===================================================================
+        # Panel 2: Efecto Puntual
+        # ===================================================================
+        
+        effect = actual_data - predicted_data
+        effect_upper = actual_data - predicted_lower
+        effect_lower = actual_data - predicted_upper
+        
+        fig.add_trace(
+            go.Scatter(
+                x=dates_list,
+                y=effect,
+                mode='lines',
+                name='Efecto',
+                line=dict(color='green', width=2),
+                showlegend=False
+            ),
+            row=2, col=1
+        )
+        
+        # Banda de confianza del efecto
+        effect_upper_values = effect_upper.values.tolist()
+        effect_lower_values = effect_lower.values.tolist()
+        
+        fig.add_trace(
+            go.Scatter(
+                x=dates_list + dates_list[::-1],
+                y=effect_upper_values + effect_lower_values[::-1],
+                fill='toself',
+                fillcolor='rgba(0, 255, 0, 0.2)',
+                line=dict(color='rgba(255,255,255,0)'),
+                showlegend=False
+            ),
+            row=2, col=1
+        )
+        
+        # Línea en cero
+        fig.add_hline(y=0, line_dash="dot", line_color="gray", row=2, col=1)
+        
+        # ===================================================================
+        # Panel 3: Efecto Acumulado
+        # ===================================================================
+        
+        cumulative_effect = effect.cumsum()
+        cumulative_upper = effect_upper.cumsum()
+        cumulative_lower = effect_lower.cumsum()
+        
+        fig.add_trace(
+            go.Scatter(
+                x=dates_list,
+                y=cumulative_effect,
+                mode='lines',
+                name='Efecto Acumulado',
+                line=dict(color='orange', width=2),
+                showlegend=False
+            ),
+            row=3, col=1
+        )
+        
+        # Banda de confianza acumulada
+        cum_upper_values = cumulative_upper.values.tolist()
+        cum_lower_values = cumulative_lower.values.tolist()
+        
+        fig.add_trace(
+            go.Scatter(
+                x=dates_list + dates_list[::-1],
+                y=cum_upper_values + cum_lower_values[::-1],
+                fill='toself',
+                fillcolor='rgba(255, 165, 0, 0.2)',
+                line=dict(color='rgba(255,255,255,0)'),
+                showlegend=False
+            ),
+            row=3, col=1
+        )
+        
+        # Línea en cero
+        fig.add_hline(y=0, line_dash="dot", line_color="gray", row=3, col=1)
+        
+        # ===================================================================
+        # Línea vertical de intervención
+        # ===================================================================
+        
+        # ✅ CORRECCIÓN: Usar add_shape en lugar de add_vline
+        if isinstance(intervention_date, pd.Timestamp):
+            intervention_dt = intervention_date.to_pydatetime()
+        elif isinstance(intervention_date, str):
+            intervention_dt = pd.Timestamp(intervention_date).to_pydatetime()
+        else:
+            intervention_dt = intervention_date
+        
+        # Añadir línea vertical manualmente en cada subplot
+        # Nota: el primer eje Y es 'y', los demás son 'y2', 'y3', etc.
+        y_refs = ['y domain', 'y2 domain', 'y3 domain']
+        
+        for idx, (row_num, yref) in enumerate(zip([1, 2, 3], y_refs)):
+            fig.add_shape(
+                type="line",
+                x0=intervention_dt,
+                x1=intervention_dt,
+                y0=0,
+                y1=1,
+                yref=yref,
+                line=dict(color="red", width=2, dash="dash"),
+                row=row_num,
+                col=1
+            )
+        
+        # Añadir anotación solo en el primer panel
+        fig.add_annotation(
+            x=intervention_dt,
+            y=1.05,
+            yref="y domain",
+            text="Intervención",
+            showarrow=False,
+            font=dict(color="red", size=12),
+            row=1,
+            col=1
+        )
+        
+        # ===================================================================
+        # Layout final
+        # ===================================================================
+        
+        fig.update_layout(
+            title=title or f"Análisis de Impacto Causal - {metric_name}",
+            height=900,
+            hovermode='x unified',
+            template='plotly_white',
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
+        )
+        
+        # Actualizar ejes
+        fig.update_xaxes(title_text="", row=1, col=1)
+        fig.update_xaxes(title_text="", row=2, col=1)
+        fig.update_xaxes(title_text="Fecha", row=3, col=1)
+        
+        fig.update_yaxes(title_text=metric_name, row=1, col=1)
+        fig.update_yaxes(title_text="Diferencia", row=2, col=1)
+        fig.update_yaxes(title_text="Acumulado", row=3, col=1)
+        
+        return fig
+    
+    @staticmethod
+    def plot_summary_metrics(summary: Dict[str, Any]) -> go.Figure:
+        """
+        Crea un gráfico de barras con las métricas principales
+        
+        Args:
+            summary: Diccionario con el resumen del análisis
+            
+        Returns:
+            Figura de Plotly
+        """
+        # Extraer datos
+        avg_effect = summary['average']['rel_effect'] * 100
+        avg_lower = summary['average']['rel_effect_lower'] * 100
+        avg_upper = summary['average']['rel_effect_upper'] * 100
+        
+        cum_effect = summary['cumulative']['rel_effect'] * 100
+        cum_lower = summary['cumulative']['rel_effect_lower'] * 100
+        cum_upper = summary['cumulative']['rel_effect_upper'] * 100
+        
+        # Crear figura
+        fig = go.Figure()
+        
+        # Barras principales
+        fig.add_trace(go.Bar(
+            x=['Efecto Promedio', 'Efecto Acumulado'],
+            y=[avg_effect, cum_effect],
+            marker_color=['blue', 'green'],
+            text=[f"{avg_effect:.1f}%", f"{cum_effect:.1f}%"],
+            textposition='outside',
+            name='Efecto'
+        ))
+        
+        # Barras de error (intervalos de confianza)
+        fig.add_trace(go.Scatter(
+            x=['Efecto Promedio', 'Efecto Acumulado'],
+            y=[avg_effect, cum_effect],
+            error_y=dict(
+                type='data',
+                symmetric=False,
+                array=[avg_upper - avg_effect, cum_upper - cum_effect],
+                arrayminus=[avg_effect - avg_lower, cum_effect - cum_lower],
+                color='gray',
+                thickness=2,
+                width=10
+            ),
+            mode='markers',
+            marker=dict(size=0.01, color='rgba(0,0,0,0)'),
+            showlegend=False
+        ))
+        
+        # Línea en cero
+        fig.add_hline(y=0, line_dash="solid", line_color="gray", line_width=1)
+        
+        # Actualizar layout
+        fig.update_layout(
+            title="Resumen del Impacto (%)",
+            yaxis_title="Cambio Porcentual",
+            height=400,
+            template='plotly_white',
+            showlegend=False
+        )
+        
+        return fig
+    
+    @staticmethod
+    def plot_period_comparison(
+        data: pd.DataFrame,
+        intervention_date: pd.Timestamp,
+        metric_column: str
+    ) -> go.Figure:
+        """
+        Compara los períodos pre y post intervención
+        
+        Args:
+            data: DataFrame original con los datos
+            intervention_date: Fecha de intervención
+            metric_column: Columna de la métrica
+            
+        Returns:
+            Figura de Plotly
+        """
+        # Separar períodos
+        data_copy = data.copy()
+        if 'date' in data_copy.columns:
+            data_copy['date'] = pd.to_datetime(data_copy['date'])
+        elif data_copy.index.name == 'date':
+            data_copy.reset_index(inplace=True)
+            data_copy['date'] = pd.to_datetime(data_copy['date'])
+        
+        # Convertir intervention_date a Timestamp si es necesario
+        if not isinstance(intervention_date, pd.Timestamp):
+            intervention_date = pd.Timestamp(intervention_date)
+        
+        pre_data = data_copy[data_copy['date'] < intervention_date]
+        post_data = data_copy[data_copy['date'] >= intervention_date]
+        
+        # Crear figura con subplots
+        fig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=('Distribución Pre-Intervención', 'Distribución Post-Intervención'),
+            specs=[[{'type': 'box'}, {'type': 'box'}]]
+        )
+        
+        # Box plot pre
+        fig.add_trace(
+            go.Box(
+                y=pre_data[metric_column],
+                name='Pre',
+                marker_color='lightblue',
+                boxmean='sd'
+            ),
+            row=1, col=1
+        )
+        
+        # Box plot post
+        fig.add_trace(
+            go.Box(
+                y=post_data[metric_column],
+                name='Post',
+                marker_color='lightgreen',
+                boxmean='sd'
+            ),
+            row=1, col=2
+        )
+        
+        # Actualizar layout
+        fig.update_layout(
+            title=f"Comparación Pre vs Post - {metric_column.title()}",
+            height=400,
+            showlegend=False,
+            template='plotly_white'
+        )
+        
+        fig.update_yaxes(title_text=metric_column.title(), row=1, col=1)
+        fig.update_yaxes(title_text=metric_column.title(), row=1, col=2)
+        
+        return fig
