@@ -18,7 +18,7 @@ st.title("📈 Causal Impact")
 st.markdown(
     """
     Flujo: **login → elegir propiedad GA4 → Extraer datos → venir aquí → Ejecutar análisis**.
-    Esta página **recoge automáticamente** los datos que hayas extraído (del `st.session_state`), 
+    Esta página **recoge automáticamente** los datos que hayas extraído (de `st.session_state`), 
     aunque no estén guardados bajo `ci_data`.
     """
 )
@@ -27,7 +27,7 @@ st.markdown(
 # 1) RECUPERACIÓN ROBUSTA: toma los datos tal como los dejó la extracción
 # ----------------------------------------------------------------------
 PREFERRED_KEYS = (
-    # claves típicas tras extracción GA4 (ajusto varias por si tu app usa otra)
+    # claves típicas tras extracción GA4 (varias alternativas por si tu app usa otra)
     "ci_data", "ga4_data", "ga4_df", "df_ga4", "ga4_results", "extract_data",
     "data", "dataset", "df", "timeseries", "series", "report", "table"
 )
@@ -109,6 +109,11 @@ try:
         if not isinstance(df_input.index, pd.DatetimeIndex):
             # como último recurso: parsea índice
             df_input.index = pd.to_datetime(df_input.index)
+
+    # quita tz si viniera con zona horaria (evita desajustes)
+    if isinstance(df_input.index, pd.DatetimeIndex) and df_input.index.tz is not None:
+        df_input.index = df_input.index.tz_localize(None)
+
     df_input = df_input.sort_index()
 except Exception:
     st.error("No pude interpretar el índice/columna de fechas. Asegúrate de que haya fecha (columna o índice).")
@@ -154,6 +159,7 @@ if not run:
 
 # --------------------------------------------------------
 # 4) SI NO HAY 'predicted', CALCÚLALO AHORA CON CAUSALIMPACT
+#    (periodos PRE/POST con Timestamps DEL ÍNDICE, no .date())
 # --------------------------------------------------------
 if "predicted" not in df_input.columns:
     try:
@@ -174,15 +180,33 @@ if "predicted" not in df_input.columns:
     X = df_input[X_cols] if X_cols else None
 
     data = pd.concat([y] + ([X] if X is not None else []), axis=1)
+    data = data.sort_index()
 
-    intervention_ts = pd.to_datetime(intervention_date)
-    pre_period = [data.index.min().date(), (intervention_ts - pd.Timedelta(days=1)).date()]
-    post_period = [intervention_ts.date(), data.index.max().date()]
+    idx = data.index
+    # Si el índice viene con tz, quítala para evitar desajustes
+    if isinstance(idx, pd.DatetimeIndex) and idx.tz is not None:
+        idx = idx.tz_localize(None)
+        data.index = idx
 
-    if pre_period[1] < pre_period[0] or post_period[1] < post_period[0]:
-        st.error("El periodo PRE o POST es inválido. Revisa la fecha de intervención y el rango temporal.")
+    # 'intervention_date' viene de st.date_input (date); conviértelo a Timestamp
+    intervention_ts = pd.Timestamp(intervention_date)
+
+    # Posición donde empieza el POST (primer índice >= intervention_ts)
+    post_start_pos = idx.searchsorted(intervention_ts, side="left")
+    pre_end_pos = post_start_pos - 1
+
+    if pre_end_pos < 0:
+        st.error("No hay datos PRE anteriores a la fecha de intervención seleccionada.")
+        st.stop()
+    if post_start_pos >= len(idx):
+        st.error("No hay datos POST en/tras la fecha de intervención seleccionada.")
         st.stop()
 
+    # Usar exactamente los elementos del índice (Timestamps) que EXISTEN
+    pre_period = [idx[0], idx[pre_end_pos]]
+    post_period = [idx[post_start_pos], idx[-1]]
+
+    # Construir y ejecutar CausalImpact con periodos válidos
     ci = CausalImpact(data, pre_period, post_period)
     infer = ci.inferences
 
