@@ -35,9 +35,9 @@ class ImpactVisualizer:
         # Verificar y mapear columnas según lo que esté disponible
         column_mapping = {
             'actual': ['actual', 'response', 'y', 0],
-            'predicted': ['predicted', 'point_pred', 'preds', 'point_prediction', 1],
-            'predicted_lower': ['predicted_lower', 'point_pred_lower', 'preds_lower', 2],
-            'predicted_upper': ['predicted_upper', 'point_pred_upper', 'preds_upper', 3]
+            'predicted': ['predicted', 'preds', 'point_pred', 'point_prediction', 1],
+            'predicted_lower': ['predicted_lower', 'preds_lower', 'point_pred_lower', 2],
+            'predicted_upper': ['predicted_upper', 'preds_upper', 'point_pred_upper', 3]
         }
         
         # Función helper para obtener la columna correcta
@@ -46,11 +46,16 @@ class ImpactVisualizer:
                 if isinstance(col_name, int):
                     # Acceso por índice numérico
                     if col_name < len(df.columns):
-                        return df.iloc[:, col_name]
+                        col_data = df.iloc[:, col_name]
+                        print(f"DEBUG {key}: Usando columna por índice {col_name}, valores: {col_data.head().tolist()}")
+                        return col_data
                 elif col_name in df.columns:
-                    return df[col_name]
+                    col_data = df[col_name]
+                    print(f"DEBUG {key}: Usando columna '{col_name}', valores: {col_data.head().tolist()}")
+                    return col_data
             # Si no encuentra la columna, retorna una serie de ceros
-            print(f"Advertencia: No se encontró la columna para {key}, usando valores por defecto")
+            print(f"⚠️ ADVERTENCIA: No se encontró columna para {key}")
+            print(f"   Columnas disponibles: {df.columns.tolist()}")
             return pd.Series(0, index=df.index)
         
         # Obtener las columnas necesarias
