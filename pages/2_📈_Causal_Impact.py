@@ -284,33 +284,65 @@ with tab2:
     else:
         visualizer = ImpactVisualizer()
         
+        # Debug: Ver qué datos tenemos
+        with st.expander("🔍 Debug: Ver estructura de datos", expanded=False):
+            if 'causal_plot_data' in st.session_state:
+                plot_data = st.session_state.causal_plot_data
+                st.write(f"Tipo de plot_data: {type(plot_data)}")
+                st.write(f"Shape: {plot_data.shape if hasattr(plot_data, 'shape') else 'N/A'}")
+                if not plot_data.empty:
+                    st.write(f"Columnas: {plot_data.columns.tolist()}")
+                    st.write("Primeras 5 filas:")
+                    st.dataframe(plot_data.head())
+                else:
+                    st.write("DataFrame está vacío")
+            else:
+                st.write("No hay datos de plot en session_state")
+        
         # Gráfico principal
-        st.subheader("1. Serie Temporal Completa")
-        fig_main = visualizer.plot_impact_analysis(
-            plot_data=st.session_state.causal_plot_data,
-            intervention_date=st.session_state.causal_intervention_date,
-            metric_name=metric_column.title()
-        )
-        st.plotly_chart(fig_main, use_container_width=True)
+        try:
+            st.subheader("1. Serie Temporal Completa")
+            
+            # Verificar que tenemos datos antes de graficar
+            if 'causal_plot_data' in st.session_state and not st.session_state.causal_plot_data.empty:
+                fig_main = visualizer.plot_impact_analysis(
+                    plot_data=st.session_state.causal_plot_data,
+                    intervention_date=st.session_state.causal_intervention_date,
+                    metric_name=metric_column.title()
+                )
+                st.plotly_chart(fig_main, use_container_width=True)
+            else:
+                st.warning("⚠️ No hay datos suficientes para crear el gráfico principal")
+        except Exception as e:
+            st.error(f"Error creando gráfico principal: {str(e)}")
+            with st.expander("Ver detalles del error"):
+                import traceback
+                st.code(traceback.format_exc())
         
         # Gráficos secundarios
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("2. Resumen de Efectos")
-            fig_summary = visualizer.plot_summary_metrics(
-                st.session_state.causal_results
-            )
-            st.plotly_chart(fig_summary, use_container_width=True)
+            try:
+                st.subheader("2. Resumen de Efectos")
+                fig_summary = visualizer.plot_summary_metrics(
+                    st.session_state.causal_results
+                )
+                st.plotly_chart(fig_summary, use_container_width=True)
+            except Exception as e:
+                st.error(f"Error en gráfico de resumen: {str(e)[:100]}")
         
         with col2:
-            st.subheader("3. Comparación Pre vs Post")
-            fig_comparison = visualizer.plot_period_comparison(
-                data=st.session_state.ga4_data,
-                intervention_date=st.session_state.causal_intervention_date,
-                metric_column=metric_column
-            )
-            st.plotly_chart(fig_comparison, use_container_width=True)
+            try:
+                st.subheader("3. Comparación Pre vs Post")
+                fig_comparison = visualizer.plot_period_comparison(
+                    data=st.session_state.ga4_data,
+                    intervention_date=st.session_state.causal_intervention_date,
+                    metric_column=metric_column
+                )
+                st.plotly_chart(fig_comparison, use_container_width=True)
+            except Exception as e:
+                st.error(f"Error en comparación: {str(e)[:100]}")
 
 # ============================================================================
 # TAB 3: RESUMEN
