@@ -43,20 +43,12 @@ class ImpactVisualizer:
         
         # Función helper para obtener la columna correcta
         def get_column(df, key):
+            """Busca la columna en el DataFrame con diferentes nombres posibles"""
             for col_name in column_mapping[key]:
-                if isinstance(col_name, int):
-                    # Acceso por índice numérico
-                    if col_name < len(df.columns):
-                        col_data = df.iloc[:, col_name]
-                        print(f"DEBUG {key}: Usando columna por índice {col_name}, valores: {col_data.head().tolist()}")
-                        return col_data
-                elif col_name in df.columns:
-                    col_data = df[col_name]
-                    print(f"DEBUG {key}: Usando columna '{col_name}', valores: {col_data.head().tolist()}")
-                    return col_data
-            # Si no encuentra la columna, retorna una serie de ceros
-            print(f"⚠️ ADVERTENCIA: No se encontró columna para {key}")
-            print(f"   Columnas disponibles: {df.columns.tolist()}")
+                if col_name in df.columns:
+                    return df[col_name]
+            
+            # Si no encuentra nada, retornar serie de ceros
             return pd.Series(0, index=df.index)
         
         # Obtener las columnas necesarias
