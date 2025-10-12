@@ -100,8 +100,11 @@ if 'test_data' in st.session_state:
             name='Sesiones'
         ))
         
+        # Convertir intervention a datetime de Python para Plotly
+        intervention_dt = intervention.to_pydatetime()
+        
         fig.add_vline(
-            x=intervention,
+            x=intervention_dt,
             line_dash="dash",
             line_color="red",
             annotation_text="Intervención"
@@ -231,11 +234,15 @@ if 'ci_result' in st.session_state:
         intervention = st.session_state['intervention_date']
         post_mask = inferences.index >= intervention
         
-        actual_post = inferences.loc[post_mask, 'response']
-        pred_post = inferences.loc[post_mask, 'preds']
+        # 🔥 OBTENER VALORES REALES desde los datos originales
+        df_original = st.session_state['test_data']
+        df_original_indexed = df_original.set_index('date')
         
-        actual_mean = actual_post.mean()
-        pred_mean = pred_post.mean()
+        actual_post_values = df_original_indexed.loc[inferences[post_mask].index, 'sessions'].values
+        pred_post = inferences.loc[post_mask, 'preds'].values
+        
+        actual_mean = float(actual_post_values.mean())
+        pred_mean = float(pred_post.mean())
         effect_mean = actual_mean - pred_mean
         rel_effect = (effect_mean / pred_mean) * 100 if pred_mean != 0 else 0
         
@@ -252,8 +259,8 @@ if 'ci_result' in st.session_state:
         
         st.markdown("---")
         
-        actual_sum = actual_post.sum()
-        pred_sum = pred_post.sum()
+        actual_sum = float(actual_post_values.sum())
+        pred_sum = float(pred_post.sum())
         effect_sum = actual_sum - pred_sum
         rel_effect_cum = (effect_sum / pred_sum) * 100 if pred_sum != 0 else 0
         
