@@ -33,11 +33,12 @@ class ImpactVisualizer:
             Figura de Plotly
         """
         # Verificar y mapear columnas según lo que esté disponible
+        # ✅ NOMBRES REALES de pycausalimpact 0.1.1
         column_mapping = {
-            'actual': ['actual', 'response', 'y', 0],
-            'predicted': ['predicted', 'preds', 'point_pred', 'point_prediction', 1],
-            'predicted_lower': ['predicted_lower', 'preds_lower', 'point_pred_lower', 2],
-            'predicted_upper': ['predicted_upper', 'preds_upper', 'point_pred_upper', 3]
+            'actual': ['response', 'actual', 'y', self.metric_column if hasattr(self, 'metric_column') else 'sessions'],
+            'predicted': ['point_pred', 'preds', 'predicted', 'point_prediction'],
+            'predicted_lower': ['point_pred_lower', 'preds_lower', 'predicted_lower'],
+            'predicted_upper': ['point_pred_upper', 'preds_upper', 'predicted_upper']
         }
         
         # Función helper para obtener la columna correcta
