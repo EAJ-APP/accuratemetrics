@@ -80,12 +80,13 @@ class ImpactVisualizer:
         # Preparar datos
         # Convertir índice a lista para evitar problemas con Timestamps
         if isinstance(plot_data.index, pd.DatetimeIndex):
-            dates = plot_data.index.to_list()
+            dates = plot_data.index
+            dates_list = plot_data.index.to_list()
         else:
             dates = plot_data.index
+            dates_list = list(plot_data.index)
         
         # Crear lista de fechas para las bandas de confianza
-        dates_list = list(dates)
         dates_reversed = list(reversed(dates_list))
         
         # Panel 1: Observado vs Predicho
@@ -118,7 +119,7 @@ class ImpactVisualizer:
         # Banda de confianza
         fig.add_trace(
             go.Scatter(
-                x=pd.concat([dates.to_series(), dates.to_series().iloc[::-1]]),
+                x=dates_list + dates_reversed,
                 y=predicted_upper.tolist() + predicted_lower.tolist()[::-1],
                 fill='toself',
                 fillcolor='rgba(0, 100, 255, 0.2)',
@@ -149,7 +150,7 @@ class ImpactVisualizer:
         # Banda de confianza del efecto
         fig.add_trace(
             go.Scatter(
-                x=pd.concat([dates.to_series(), dates.to_series().iloc[::-1]]),
+                x=dates_list + dates_reversed,
                 y=effect_upper.tolist() + effect_lower.tolist()[::-1],
                 fill='toself',
                 fillcolor='rgba(0, 255, 0, 0.2)',
@@ -182,7 +183,7 @@ class ImpactVisualizer:
         # Banda de confianza acumulada
         fig.add_trace(
             go.Scatter(
-                x=pd.concat([dates.to_series(), dates.to_series().iloc[::-1]]),
+                x=dates_list + dates_reversed,
                 y=cumulative_upper.tolist() + cumulative_lower.tolist()[::-1],
                 fill='toself',
                 fillcolor='rgba(255, 165, 0, 0.2)',
