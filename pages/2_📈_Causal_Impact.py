@@ -17,42 +17,122 @@ st.title("📈 Causal Impact")
 
 st.markdown(
     """
-    Esta página ejecuta y **visualiza** el análisis de impacto causal.
-    - Asegúrate de traer un `DataFrame` con **observado** y (si no existe `predicted`) generaremos el **predicho** con *CausalImpact* usando el periodo PRE.
-    - Los datos deben estar en `st.session_state['ci_data']` (ver página 🔍 Diagnostic).
+    Flujo: **login → elegir propiedad GA4 → Extraer datos → venir aquí → Ejecutar análisis**.
+    Esta página **recoge automáticamente** los datos que hayas extraído (del `st.session_state`), 
+    aunque no estén guardados bajo `ci_data`.
     """
 )
 
-# =====================
-# Entrada de datos
-# =====================
-df_input = st.session_state.get("ci_data")
+# ----------------------------------------------------------------------
+# 1) RECUPERACIÓN ROBUSTA: toma los datos tal como los dejó la extracción
+# ----------------------------------------------------------------------
+PREFERRED_KEYS = (
+    # claves típicas tras extracción GA4 (ajusto varias por si tu app usa otra)
+    "ci_data", "ga4_data", "ga4_df", "df_ga4", "ga4_results", "extract_data",
+    "data", "dataset", "df", "timeseries", "series", "report", "table"
+)
+
+def _try_to_dataframe(x):
+    if isinstance(x, pd.DataFrame):
+        return x
+    try:
+        df = pd.DataFrame(x)
+        # descarta falsos positivos (e.g., escalares)
+        if df.empty and not isinstance(x, (list, dict)):
+            return None
+        return df
+    except Exception:
+        return None
+
+def _is_timeseries(df: pd.DataFrame) -> bool:
+    if isinstance(df.index, pd.DatetimeIndex):
+        return True
+    cols_lower = [c.lower() for c in df.columns]
+    return any(c in cols_lower for c in ("date", "fecha", "ds"))
+
+def _has_numeric(df: pd.DataFrame) -> bool:
+    return any(pd.api.types.is_numeric_dtype(df[c]) for c in df.columns)
+
+def recover_extracted_df() -> pd.DataFrame | None:
+    # 1) preferidas explícitas
+    for k in PREFERRED_KEYS:
+        if k in st.session_state:
+            cand = _try_to_dataframe(st.session_state[k])
+            if cand is not None and _is_timeseries(cand) and _has_numeric(cand):
+                st.info(f"Usando datos de extracción: `st.session_state['{k}']`.")
+                return cand
+
+    # 2) si no, busca el mejor candidato entre TODO el session_state
+    candidates = []
+    for k, v in st.session_state.items():
+        cand = _try_to_dataframe(v)
+        if cand is None:
+            continue
+        score = 0
+        if _is_timeseries(cand): score += 1
+        if _has_numeric(cand):   score += 1
+        # ligera preferencia si la clave "suena" a datos GA4
+        for hint in ("ga4", "extract", "data", "df", "report", "table", "timeseries", "series"):
+            if hint in k.lower():
+                score += 1
+                break
+        if score >= 2:
+            candidates.append((k, cand, score))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda x: x[2], reverse=True)
+    best_key, best_df, _ = candidates[0]
+    st.info(f"Usando datos de `st.session_state['{best_key}']` (mejor candidato).")
+    return best_df
+
+df_input = recover_extracted_df()
 if df_input is None:
     st.warning(
-        "No encontré `st.session_state['ci_data']`. "
-        "Ve a la página 🔍 Diagnostic, ejecuta la extracción y vuelve."
+        "No encuentro datos de la extracción en `st.session_state`. "
+        "Vuelve a la página principal, pulsa **Extraer**, y regresa."
     )
     st.stop()
 
-# Asegurar índice temporal ordenado
+# --------------------------------------------------------
+# 2) NORMALIZA FECHAS Y ASEGURA 'actual' (sin exigir ci_data)
+# --------------------------------------------------------
 try:
     if not isinstance(df_input.index, pd.DatetimeIndex):
-        if "date" in df_input.columns:
-            df_input = df_input.set_index(pd.to_datetime(df_input["date"]))
-        else:
+        # intenta columna de fecha común
+        for cand in ("date", "Date", "fecha", "ds"):
+            if cand in df_input.columns:
+                df_input[cand] = pd.to_datetime(df_input[cand])
+                df_input = df_input.set_index(cand)
+                break
+        if not isinstance(df_input.index, pd.DatetimeIndex):
+            # como último recurso: parsea índice
             df_input.index = pd.to_datetime(df_input.index)
     df_input = df_input.sort_index()
 except Exception:
-    st.error("No pude interpretar el índice/columna de fechas. Asegúrate de incluir una columna 'date' o un índice temporal.")
+    st.error("No pude interpretar el índice/columna de fechas. Asegúrate de que haya fecha (columna o índice).")
     st.stop()
 
-# Inferir 'actual' si no existe todavía
+# Asegura columna objetivo 'actual'
 if "actual" not in df_input.columns:
-    if "sessions" in df_input.columns:
-        df_input = df_input.rename(columns={"sessions": "actual"})
-    elif "value" in df_input.columns:
-        df_input = df_input.rename(columns={"value": "actual"})
+    # intenta convenciones típicas de GA4
+    for cand in ("sessions", "totalUsers", "activeUsers", "screenPageViews", "eventCount", "value"):
+        if cand in df_input.columns:
+            df_input = df_input.rename(columns={cand: "actual"})
+            break
+    else:
+        # toma la primera numérica
+        num_cols = [c for c in df_input.columns if pd.api.types.is_numeric_dtype(df_input[c])]
+        if num_cols:
+            df_input = df_input.rename(columns={num_cols[0]: "actual"})
+        else:
+            st.error("No encuentro una columna numérica para usar como 'actual'.")
+            st.stop()
 
+# --------------------------------------------------------
+# 3) UI: FECHA DE INTERVENCIÓN + ALPHA
+# --------------------------------------------------------
 min_date = df_input.index.min()
 max_date = df_input.index.max()
 
@@ -68,14 +148,13 @@ with col2:
     alpha = st.number_input("Nivel de significación (alpha)", value=0.05, min_value=0.001, max_value=0.5, step=0.005)
 
 run = st.button("Ejecutar análisis")
-
 if not run:
     st.info("Selecciona la fecha y pulsa **Ejecutar análisis**.")
     st.stop()
 
-# =====================
-# Si no hay 'predicted', ejecuta CausalImpact para estimarlo
-# =====================
+# --------------------------------------------------------
+# 4) SI NO HAY 'predicted', CALCÚLALO AHORA CON CAUSALIMPACT
+# --------------------------------------------------------
 if "predicted" not in df_input.columns:
     try:
         from causalimpact import CausalImpact
@@ -87,15 +166,12 @@ if "predicted" not in df_input.columns:
         )
         st.stop()
 
-    if "actual" not in df_input.columns:
-        st.error("No encuentro columna 'actual' para ejecutar CausalImpact.")
-        st.stop()
-
     y = df_input["actual"]
 
-    exclude_cols = {"actual", "predicted", "predicted_lower", "predicted_upper", "point_effect", "cumulative_effect"}
-    candidate_cols = [c for c in df_input.columns if c not in exclude_cols]
-    X = df_input[candidate_cols] if candidate_cols else None
+    # Regresores potenciales: todo lo que no sea columnas reservadas
+    reserved = {"actual", "predicted", "predicted_lower", "predicted_upper", "point_effect", "cumulative_effect", "p", "p_value"}
+    X_cols = [c for c in df_input.columns if c not in reserved and pd.api.types.is_numeric_dtype(df_input[c])]
+    X = df_input[X_cols] if X_cols else None
 
     data = pd.concat([y] + ([X] if X is not None else []), axis=1)
 
@@ -110,6 +186,7 @@ if "predicted" not in df_input.columns:
     ci = CausalImpact(data, pre_period, post_period)
     infer = ci.inferences
 
+    # Trae columnas relevantes si existen
     cols_ci = [c for c in ["point_pred", "point_pred_lower", "point_pred_upper", "point_effect", "cumulative_effect", "p"] if c in infer.columns]
     df_input = df_input.join(infer[cols_ci], how="left").rename(
         columns={
@@ -120,9 +197,9 @@ if "predicted" not in df_input.columns:
         }
     )
 
-# =====================
-# Normalización + Cálculo (usa funciones del módulo)
-# =====================
+# --------------------------------------------------------
+# 5) ESTANDARIZA + RESUMEN (solo POST) + GRÁFICOS (autoejes)
+# --------------------------------------------------------
 with st.spinner("Normalizando columnas y calculando métricas..."):
     try:
         df_std = standardize_causal_columns(df_input)
@@ -141,9 +218,7 @@ with st.spinner("Normalizando columnas y calculando métricas..."):
         st.error(f"Error al calcular el resumen POST: {e}")
         st.stop()
 
-# =====================
-# KPIs de resumen
-# =====================
+# KPIs
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("Efecto promedio (POST)", f"{summary['avg_effect']:.2f}")
 k2.metric("Efecto acumulado (POST)", f"{summary['cum_effect']:.2f}")
@@ -152,9 +227,7 @@ k3.metric("% cambio medio (POST)", pct_display)
 k4.metric("Significativo", "Sí ✅" if summary["is_significant"] else "No ❌")
 st.caption("Las métricas se calculan **solo sobre el periodo POST** desde la fecha seleccionada.")
 
-# =====================
-# Gráficos (autoajuste de ejes)
-# =====================
+# Gráficos (usar width='stretch' como recomienda Streamlit)
 g1, g2 = st.columns((2, 1))
 with g1:
     fig1 = plot_observed_vs_predicted(df_std, pd.to_datetime(intervention_date))
