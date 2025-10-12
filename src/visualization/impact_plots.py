@@ -143,4 +143,13 @@ def plot_cumulative_effect(df: pd.DataFrame, intervention_date: Optional[pd.Time
     return fig
 
 
-def plot_impact_dashboard(df: pd.DataFrame, intervention_date: Optional[pd.Timestamp] = None):
+def plot_impact_dashboard(df: pd.DataFrame, intervention_date: Optional[pd.Timestamp] = None) -> Dict[str, plt.Figure]:
+    """
+    Devuelve las 3 figuras principales para el dashboard.
+    """
+    figs = {
+        "observado_vs_predicho": plot_observed_vs_predicted(df, intervention_date),
+        "efecto_puntual": plot_point_effect(df, intervention_date),
+        "efecto_acumulado": plot_cumulative_effect(df, intervention_date),
+    }
+    return figs
