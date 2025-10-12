@@ -30,13 +30,6 @@ class ImpactVisualizer:
     """
     Clase *de compatibilidad* para no romper código que importaba
     `ImpactVisualizer` desde `src.visualization`.
-
-    Uso típico:
-        vis = ImpactVisualizer(df, intervention_date)
-        fig1 = vis.observed_vs_predicted()
-        fig2 = vis.point_effect()
-        fig3 = vis.cumulative_effect()
-        figs = vis.dashboard()
     """
 
     def __init__(self, df: pd.DataFrame, intervention_date: Optional[pd.Timestamp] = None):
