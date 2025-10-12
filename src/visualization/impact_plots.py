@@ -77,17 +77,16 @@ class ImpactVisualizer:
             row_heights=[0.4, 0.3, 0.3]
         )
         
-        # Preparar datos
-        # Convertir índice a lista para evitar problemas con Timestamps
-        if isinstance(plot_data.index, pd.DatetimeIndex):
-            dates = plot_data.index
-            dates_list = plot_data.index.to_list()
-        else:
-            dates = plot_data.index
-            dates_list = list(plot_data.index)
+        # Preparar datos de fechas
+        # IMPORTANTE: Usar el índice original para las líneas principales
+        dates = plot_data.index
         
-        # Crear lista de fechas para las bandas de confianza
-        dates_reversed = list(reversed(dates_list))
+        # Para las bandas de confianza, necesitamos listas de Python
+        # Convertir a lista de forma segura
+        if hasattr(dates, 'tolist'):
+            dates_list = dates.tolist()
+        else:
+            dates_list = list(dates)
         
         # Panel 1: Observado vs Predicho
         # Línea de valores observados
@@ -116,11 +115,14 @@ class ImpactVisualizer:
             row=1, col=1
         )
         
-        # Banda de confianza
+        # Banda de confianza - usando concatenación de listas
+        upper_values = predicted_upper.values.tolist() if hasattr(predicted_upper, 'values') else list(predicted_upper)
+        lower_values = predicted_lower.values.tolist() if hasattr(predicted_lower, 'values') else list(predicted_lower)
+        
         fig.add_trace(
             go.Scatter(
-                x=dates_list + dates_reversed,
-                y=predicted_upper.tolist() + predicted_lower.tolist()[::-1],
+                x=dates_list + dates_list[::-1],
+                y=upper_values + lower_values[::-1],
                 fill='toself',
                 fillcolor='rgba(0, 100, 255, 0.2)',
                 line=dict(color='rgba(255,255,255,0)'),
@@ -148,10 +150,13 @@ class ImpactVisualizer:
         )
         
         # Banda de confianza del efecto
+        effect_upper_values = effect_upper.values.tolist() if hasattr(effect_upper, 'values') else list(effect_upper)
+        effect_lower_values = effect_lower.values.tolist() if hasattr(effect_lower, 'values') else list(effect_lower)
+        
         fig.add_trace(
             go.Scatter(
-                x=dates_list + dates_reversed,
-                y=effect_upper.tolist() + effect_lower.tolist()[::-1],
+                x=dates_list + dates_list[::-1],
+                y=effect_upper_values + effect_lower_values[::-1],
                 fill='toself',
                 fillcolor='rgba(0, 255, 0, 0.2)',
                 line=dict(color='rgba(255,255,255,0)'),
@@ -181,10 +186,13 @@ class ImpactVisualizer:
         )
         
         # Banda de confianza acumulada
+        cum_upper_values = cumulative_upper.values.tolist() if hasattr(cumulative_upper, 'values') else list(cumulative_upper)
+        cum_lower_values = cumulative_lower.values.tolist() if hasattr(cumulative_lower, 'values') else list(cumulative_lower)
+        
         fig.add_trace(
             go.Scatter(
-                x=dates_list + dates_reversed,
-                y=cumulative_upper.tolist() + cumulative_lower.tolist()[::-1],
+                x=dates_list + dates_list[::-1],
+                y=cum_upper_values + cum_lower_values[::-1],
                 fill='toself',
                 fillcolor='rgba(255, 165, 0, 0.2)',
                 line=dict(color='rgba(255,255,255,0)'),
@@ -197,9 +205,15 @@ class ImpactVisualizer:
         fig.add_hline(y=0, line_dash="dot", line_color="gray", row=3, col=1)
         
         # Línea vertical de intervención
+        # Convertir intervention_date a timestamp si es necesario
+        if isinstance(intervention_date, pd.Timestamp):
+            intervention_ts = intervention_date
+        else:
+            intervention_ts = pd.Timestamp(intervention_date)
+        
         for row in [1, 2, 3]:
             fig.add_vline(
-                x=intervention_date,
+                x=intervention_ts,
                 line_dash="dash",
                 line_color="red",
                 annotation_text="Intervención" if row == 1 else None,
@@ -322,6 +336,10 @@ class ImpactVisualizer:
         elif data_copy.index.name == 'date':
             data_copy.reset_index(inplace=True)
             data_copy['date'] = pd.to_datetime(data_copy['date'])
+        
+        # Convertir intervention_date a Timestamp si es necesario
+        if not isinstance(intervention_date, pd.Timestamp):
+            intervention_date = pd.Timestamp(intervention_date)
         
         pre_data = data_copy[data_copy['date'] < intervention_date]
         post_data = data_copy[data_copy['date'] >= intervention_date]
