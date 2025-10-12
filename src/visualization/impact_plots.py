@@ -35,7 +35,7 @@ class ImpactVisualizer:
         # Verificar y mapear columnas según lo que esté disponible
         # ✅ NOMBRES REALES de pycausalimpact 0.1.1
         column_mapping = {
-            'actual': ['response', 'actual', 'y', self.metric_column if hasattr(self, 'metric_column') else 'sessions'],
+            'actual': ['response', 'actual', 'y', 'sessions'],
             'predicted': ['point_pred', 'preds', 'predicted', 'point_prediction'],
             'predicted_lower': ['point_pred_lower', 'preds_lower', 'predicted_lower'],
             'predicted_upper': ['point_pred_upper', 'preds_upper', 'predicted_upper']
