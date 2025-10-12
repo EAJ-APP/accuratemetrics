@@ -22,18 +22,16 @@ class ImpactVisualizer:
     ) -> go.Figure:
         """
         Crea el gráfico principal del análisis de impacto
-        
-        Args:
-            plot_data: DataFrame con los datos del análisis
-            intervention_date: Fecha de la intervención
-            metric_name: Nombre de la métrica analizada
-            title: Título del gráfico
-            
-        Returns:
-            Figura de Plotly
         """
-        # Verificar y mapear columnas según lo que esté disponible
-        # ✅ NOMBRES REALES de pycausalimpact 0.1.1
+        # ✅ DEBUG: Imprimir información del DataFrame
+        import streamlit as st
+        st.write("🔍 DEBUG - Información del DataFrame:")
+        st.write(f"Columnas disponibles: {plot_data.columns.tolist()}")
+        st.write(f"Shape: {plot_data.shape}")
+        st.write("Primeras 3 filas:")
+        st.dataframe(plot_data.head(3))
+        
+        # Verificar y mapear columnas
         column_mapping = {
             'actual': ['response', 'actual', 'y', 'sessions'],
             'predicted': ['point_pred', 'preds', 'predicted', 'point_prediction'],
@@ -41,14 +39,16 @@ class ImpactVisualizer:
             'predicted_upper': ['point_pred_upper', 'preds_upper', 'predicted_upper']
         }
         
-        # Función helper para obtener la columna correcta
+        # Función helper
         def get_column(df, key):
-            """Busca la columna en el DataFrame con diferentes nombres posibles"""
+            """Busca la columna en el DataFrame"""
             for col_name in column_mapping[key]:
                 if col_name in df.columns:
+                    st.write(f"✅ {key}: Encontrada columna '{col_name}'")
+                    st.write(f"   Valores: {df[col_name].head(3).tolist()}")
                     return df[col_name]
             
-            # Si no encuentra nada, retornar serie de ceros
+            st.error(f"❌ {key}: NO encontrada. Buscaba: {column_mapping[key]}")
             return pd.Series(0, index=df.index)
         
         # Obtener las columnas necesarias
