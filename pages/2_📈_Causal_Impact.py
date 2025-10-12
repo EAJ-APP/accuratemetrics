@@ -158,13 +158,13 @@ st.caption("Las métricas se calculan **solo sobre el periodo POST** desde la fe
 g1, g2 = st.columns((2, 1))
 with g1:
     fig1 = plot_observed_vs_predicted(df_std, pd.to_datetime(intervention_date))
-    st.pyplot(fig1, use_container_width=True)
+    st.pyplot(fig1, width="stretch")
 
 with g2:
     fig2 = plot_point_effect(df_std, pd.to_datetime(intervention_date))
-    st.pyplot(fig2, use_container_width=True)
+    st.pyplot(fig2, width="stretch")
 
 fig3 = plot_cumulative_effect(df_std, pd.to_datetime(intervention_date))
-st.pyplot(fig3, use_container_width=True)
+st.pyplot(fig3, width="stretch")
 
 st.success("Análisis completado.")
