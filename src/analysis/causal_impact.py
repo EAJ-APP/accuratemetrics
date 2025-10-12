@@ -323,61 +323,38 @@ class CausalImpactAnalyzer:
             if hasattr(self.impact_result, 'inferences'):
                 result_df = self.impact_result.inferences.copy()
                 
-                # Para pycausalimpact 0.1.1
+                # ✅ CORRECCIÓN: No renombrar, simplemente usar las columnas existentes
+                # pycausalimpact 0.1.1 ya tiene las columnas correctas
+                
+                # Verificar qué columnas tenemos
+                print(f"Columnas originales de CausalImpact: {result_df.columns.tolist()}")
+                
+                # El DataFrame de CausalImpact ya tiene todas las columnas necesarias
+                # Solo necesitamos asegurarnos de que existen las que esperamos
+                
+                # Si las columnas son índices numéricos, mapearlas
                 if isinstance(result_df.columns[0], int):
-                    # Las columnas son índices numéricos
                     num_cols = len(result_df.columns)
-                    
                     if num_cols >= 4:
                         result_df.columns = ['predicted', 'predicted_lower', 'predicted_upper', 'actual'][:num_cols]
-                    elif num_cols == 2:
-                        result_df.columns = ['predicted', 'actual']
-                    elif num_cols == 1:
-                        result_df.columns = ['actual']
-                        result_df['predicted'] = result_df['actual'] * 0.9
-                    
-                elif 'response' in result_df.columns:
-                    # Versión 0.1.1 usa nombres diferentes
-                    column_mapping = {
-                        'point_pred': 'predicted',
-                        'point_pred_lower': 'predicted_lower',
-                        'point_pred_upper': 'predicted_upper',
-                        'response': 'actual'
-                    }
-                    
-                    for old_name, new_name in column_mapping.items():
-                        if old_name in result_df.columns:
-                            result_df.rename(columns={old_name: new_name}, inplace=True)
                 
-                # Asegurar que tenemos todas las columnas necesarias
-                required_cols = ['actual', 'predicted', 'predicted_lower', 'predicted_upper']
-                for col in required_cols:
-                    if col not in result_df.columns:
-                        if col == 'actual' and 'predicted' in result_df.columns:
-                            result_df['actual'] = result_df['predicted'] + np.random.normal(0, result_df['predicted'].std() * 0.1, len(result_df))
-                        elif col == 'predicted' and 'actual' in result_df.columns:
-                            result_df['predicted'] = result_df['actual'] * 0.95
-                        elif col == 'predicted_lower' and 'predicted' in result_df.columns:
-                            result_df['predicted_lower'] = result_df['predicted'] * 0.9
-                        elif col == 'predicted_upper' and 'predicted' in result_df.columns:
-                            result_df['predicted_upper'] = result_df['predicted'] * 1.1
-                        else:
-                            result_df[col] = 0
+                # Añadir columna de período
+                result_df['period'] = 'pre'
+                if self.intervention_date:
+                    result_df.loc[result_df.index >= self.intervention_date, 'period'] = 'post'
                 
-                # Calcular residuales
+                # Calcular residuales si tenemos las columnas necesarias
                 if 'actual' in result_df.columns and 'predicted' in result_df.columns:
                     result_df['residuals'] = result_df['actual'] - result_df['predicted']
                     result_df['cumulative_residuals'] = result_df['residuals'].cumsum()
                 
+                print(f"Columnas finales: {result_df.columns.tolist()}")
+                print(f"Primeras filas:\n{result_df.head()}")
+                
+                return result_df
+                
             else:
                 return pd.DataFrame(columns=['actual', 'predicted', 'predicted_lower', 'predicted_upper', 'period'])
-            
-            # Añadir columna de período
-            result_df['period'] = 'pre'
-            if self.intervention_date:
-                result_df.loc[result_df.index >= self.intervention_date, 'period'] = 'post'
-            
-            return result_df
             
         except Exception as e:
             print(f"Error obteniendo datos para graficar: {e}")
