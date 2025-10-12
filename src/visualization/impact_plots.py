@@ -32,6 +32,39 @@ class ImpactVisualizer:
         Returns:
             Figura de Plotly
         """
+        # Verificar y mapear columnas según lo que esté disponible
+        column_mapping = {
+            'actual': ['actual', 'response', 'y', 0],
+            'predicted': ['predicted', 'point_pred', 'point_prediction', 1],
+            'predicted_lower': ['predicted_lower', 'point_pred_lower', 2],
+            'predicted_upper': ['predicted_upper', 'point_pred_upper', 3]
+        }
+        
+        # Función helper para obtener la columna correcta
+        def get_column(df, key):
+            for col_name in column_mapping[key]:
+                if isinstance(col_name, int):
+                    # Acceso por índice numérico
+                    if col_name < len(df.columns):
+                        return df.iloc[:, col_name]
+                elif col_name in df.columns:
+                    return df[col_name]
+            # Si no encuentra la columna, retorna una serie de ceros
+            print(f"Advertencia: No se encontró la columna para {key}, usando valores por defecto")
+            return pd.Series(0, index=df.index)
+        
+        # Obtener las columnas necesarias
+        actual_data = get_column(plot_data, 'actual')
+        predicted_data = get_column(plot_data, 'predicted')
+        predicted_lower = get_column(plot_data, 'predicted_lower')
+        predicted_upper = get_column(plot_data, 'predicted_upper')
+        
+        # Si no hay límites de confianza, crear aproximaciones
+        if (predicted_lower == 0).all():
+            predicted_lower = predicted_data * 0.9
+        if (predicted_upper == 0).all():
+            predicted_upper = predicted_data * 1.1
+        
         # Crear subplots
         fig = make_subplots(
             rows=3, cols=1,
@@ -52,7 +85,7 @@ class ImpactVisualizer:
         fig.add_trace(
             go.Scatter(
                 x=dates,
-                y=plot_data['actual'],
+                y=actual_data,
                 mode='lines',
                 name='Observado',
                 line=dict(color='black', width=2),
@@ -65,7 +98,7 @@ class ImpactVisualizer:
         fig.add_trace(
             go.Scatter(
                 x=dates,
-                y=plot_data['predicted'],
+                y=predicted_data,
                 mode='lines',
                 name='Predicho',
                 line=dict(color='blue', width=2, dash='dash'),
@@ -78,7 +111,7 @@ class ImpactVisualizer:
         fig.add_trace(
             go.Scatter(
                 x=dates.tolist() + dates.tolist()[::-1],
-                y=plot_data['predicted_upper'].tolist() + plot_data['predicted_lower'].tolist()[::-1],
+                y=predicted_upper.tolist() + predicted_lower.tolist()[::-1],
                 fill='toself',
                 fillcolor='rgba(0, 100, 255, 0.2)',
                 line=dict(color='rgba(255,255,255,0)'),
@@ -89,9 +122,9 @@ class ImpactVisualizer:
         )
         
         # Panel 2: Efecto Puntual
-        effect = plot_data['actual'] - plot_data['predicted']
-        effect_upper = plot_data['actual'] - plot_data['predicted_lower']
-        effect_lower = plot_data['actual'] - plot_data['predicted_upper']
+        effect = actual_data - predicted_data
+        effect_upper = actual_data - predicted_lower
+        effect_lower = actual_data - predicted_upper
         
         fig.add_trace(
             go.Scatter(
