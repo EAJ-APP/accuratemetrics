@@ -1,5 +1,5 @@
 """
-Visualizaciones para Causal Impact - VERSIÓN CORREGIDA
+Visualizaciones para Causal Impact - VERSIÓN COMPLETAMENTE CORREGIDA
 """
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -35,9 +35,9 @@ class ImpactVisualizer:
         # Verificar y mapear columnas según lo que esté disponible
         column_mapping = {
             'actual': ['actual', 'response', 'y', 0],
-            'predicted': ['predicted', 'point_pred', 'point_prediction', 1],
-            'predicted_lower': ['predicted_lower', 'point_pred_lower', 2],
-            'predicted_upper': ['predicted_upper', 'point_pred_upper', 3]
+            'predicted': ['predicted', 'point_pred', 'preds', 'point_prediction', 1],
+            'predicted_lower': ['predicted_lower', 'point_pred_lower', 'preds_lower', 2],
+            'predicted_upper': ['predicted_upper', 'point_pred_upper', 'preds_upper', 3]
         }
         
         # Función helper para obtener la columna correcta
@@ -77,13 +77,13 @@ class ImpactVisualizer:
             row_heights=[0.4, 0.3, 0.3]
         )
         
-        # ✅ CORRECCIÓN PRINCIPAL: Convertir índice a lista de forma segura
-        # Esto evita el error de operaciones con Timestamps
+        # ✅ CORRECCIÓN: Convertir índice a lista de datetime de Python
         dates = plot_data.index
         
-        # Convertir a lista de Python de forma explícita
+        # Convertir a datetime de Python (no pandas Timestamp)
         if isinstance(dates, pd.DatetimeIndex):
-            dates_list = dates.to_pydatetime().tolist()
+            dates_python = dates.to_pydatetime()
+            dates_list = dates_python.tolist()
         elif hasattr(dates, 'tolist'):
             dates_list = dates.tolist()
         else:
@@ -96,7 +96,7 @@ class ImpactVisualizer:
         # Línea de valores observados
         fig.add_trace(
             go.Scatter(
-                x=dates,
+                x=dates_list,  # Usar lista de datetime de Python
                 y=actual_data,
                 mode='lines',
                 name='Observado',
@@ -109,7 +109,7 @@ class ImpactVisualizer:
         # Línea de predicción
         fig.add_trace(
             go.Scatter(
-                x=dates,
+                x=dates_list,
                 y=predicted_data,
                 mode='lines',
                 name='Predicho',
@@ -119,16 +119,13 @@ class ImpactVisualizer:
             row=1, col=1
         )
         
-        # ✅ Banda de confianza - usando concatenación segura de listas
-        upper_values = predicted_upper.values.tolist() if hasattr(predicted_upper, 'values') else list(predicted_upper)
-        lower_values = predicted_lower.values.tolist() if hasattr(predicted_lower, 'values') else list(predicted_lower)
-        
-        # Crear la lista de fechas concatenada (forward + backward)
-        dates_concat = dates_list + dates_list[::-1]
+        # Banda de confianza
+        upper_values = predicted_upper.values.tolist()
+        lower_values = predicted_lower.values.tolist()
         
         fig.add_trace(
             go.Scatter(
-                x=dates_concat,
+                x=dates_list + dates_list[::-1],
                 y=upper_values + lower_values[::-1],
                 fill='toself',
                 fillcolor='rgba(0, 100, 255, 0.2)',
@@ -149,7 +146,7 @@ class ImpactVisualizer:
         
         fig.add_trace(
             go.Scatter(
-                x=dates,
+                x=dates_list,
                 y=effect,
                 mode='lines',
                 name='Efecto',
@@ -160,12 +157,12 @@ class ImpactVisualizer:
         )
         
         # Banda de confianza del efecto
-        effect_upper_values = effect_upper.values.tolist() if hasattr(effect_upper, 'values') else list(effect_upper)
-        effect_lower_values = effect_lower.values.tolist() if hasattr(effect_lower, 'values') else list(effect_lower)
+        effect_upper_values = effect_upper.values.tolist()
+        effect_lower_values = effect_lower.values.tolist()
         
         fig.add_trace(
             go.Scatter(
-                x=dates_concat,
+                x=dates_list + dates_list[::-1],
                 y=effect_upper_values + effect_lower_values[::-1],
                 fill='toself',
                 fillcolor='rgba(0, 255, 0, 0.2)',
@@ -188,7 +185,7 @@ class ImpactVisualizer:
         
         fig.add_trace(
             go.Scatter(
-                x=dates,
+                x=dates_list,
                 y=cumulative_effect,
                 mode='lines',
                 name='Efecto Acumulado',
@@ -199,12 +196,12 @@ class ImpactVisualizer:
         )
         
         # Banda de confianza acumulada
-        cum_upper_values = cumulative_upper.values.tolist() if hasattr(cumulative_upper, 'values') else list(cumulative_upper)
-        cum_lower_values = cumulative_lower.values.tolist() if hasattr(cumulative_lower, 'values') else list(cumulative_lower)
+        cum_upper_values = cumulative_upper.values.tolist()
+        cum_lower_values = cumulative_lower.values.tolist()
         
         fig.add_trace(
             go.Scatter(
-                x=dates_concat,
+                x=dates_list + dates_list[::-1],
                 y=cum_upper_values + cum_lower_values[::-1],
                 fill='toself',
                 fillcolor='rgba(255, 165, 0, 0.2)',
@@ -221,15 +218,18 @@ class ImpactVisualizer:
         # Línea vertical de intervención
         # ===================================================================
         
-        # Convertir intervention_date a timestamp si es necesario
+        # ✅ CORRECCIÓN CRÍTICA: Convertir a datetime de Python para Plotly
         if isinstance(intervention_date, pd.Timestamp):
-            intervention_ts = intervention_date
+            intervention_dt = intervention_date.to_pydatetime()
+        elif isinstance(intervention_date, str):
+            intervention_dt = pd.Timestamp(intervention_date).to_pydatetime()
         else:
-            intervention_ts = pd.Timestamp(intervention_date)
+            # Ya es datetime de Python
+            intervention_dt = intervention_date
         
         for row in [1, 2, 3]:
             fig.add_vline(
-                x=intervention_ts,
+                x=intervention_dt,
                 line_dash="dash",
                 line_color="red",
                 annotation_text="Intervención" if row == 1 else None,
