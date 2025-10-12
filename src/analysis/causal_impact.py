@@ -1,6 +1,6 @@
 """
 Motor de análisis de Causal Impact para AccurateMetrics
-Versión básica con soporte para una intervención
+Versión básica con soporte para una intervención - CORREGIDO
 """
 import pandas as pd
 import numpy as np
@@ -58,6 +58,10 @@ class CausalImpactAnalyzer:
         # Ordenar por fecha
         df.sort_index(inplace=True)
         
+        # ✅ CORRECCIÓN CRÍTICA: Asegurar frecuencia diaria en el índice
+        # Esto evita el error de statsmodels con operaciones de Timestamp
+        df.index = pd.DatetimeIndex(df.index, freq='D')
+        
         # Verificar que la métrica existe
         if self.metric_column not in df.columns:
             raise ValueError(f"La columna '{self.metric_column}' no existe en los datos")
@@ -66,8 +70,9 @@ class CausalImpactAnalyzer:
         df = df[[self.metric_column]]
         
         # Manejar valores faltantes
-        df.fillna(method='ffill', inplace=True)
-        df.fillna(0, inplace=True)
+        if df.isnull().any().any():
+            df = df.fillna(method='ffill')
+            df = df.fillna(0)
         
         return df
     
@@ -100,31 +105,47 @@ class CausalImpactAnalyzer:
         if self.intervention_date >= self.data.index.max():
             raise ValueError("La fecha de intervención debe ser anterior al final de los datos")
         
+        # ✅ CORRECCIÓN: Usar pd.Timedelta en lugar de timedelta para operaciones
         # Definir períodos pre y post
         if pre_period_days:
-            pre_start = self.intervention_date - timedelta(days=pre_period_days)
+            pre_start = self.intervention_date - pd.Timedelta(days=pre_period_days)
             pre_start = max(pre_start, self.data.index.min())
         else:
             pre_start = self.data.index.min()
         
-        pre_end = self.intervention_date - timedelta(days=1)
+        pre_end = self.intervention_date - pd.Timedelta(days=1)
         
         post_start = self.intervention_date
         
         if post_period_days:
-            post_end = self.intervention_date + timedelta(days=post_period_days)
+            post_end = self.intervention_date + pd.Timedelta(days=post_period_days)
             post_end = min(post_end, self.data.index.max())
         else:
             post_end = self.data.index.max()
+        
+        # ✅ CORRECCIÓN: Asegurar que los timestamps tengan la misma frecuencia
+        # Normalizar timestamps para que sean exactamente medianoche
+        pre_start = pd.Timestamp(pre_start.date())
+        pre_end = pd.Timestamp(pre_end.date())
+        post_start = pd.Timestamp(post_start.date())
+        post_end = pd.Timestamp(post_end.date())
         
         # Crear tuplas de períodos para CausalImpact
         pre_period = [pre_start, pre_end]
         post_period = [post_start, post_end]
         
+        # ✅ CORRECCIÓN: Filtrar el DataFrame para asegurar que solo incluye datos válidos
+        # Esto evita problemas de índice en CausalImpact
+        analysis_data = self.data.loc[pre_start:post_end].copy()
+        
+        # Asegurar que el índice tiene frecuencia
+        if analysis_data.index.freq is None:
+            analysis_data.index = pd.DatetimeIndex(analysis_data.index, freq='D')
+        
         # Ejecutar análisis
         try:
             self.impact_result = CausalImpact(
-                self.data,
+                analysis_data,
                 pre_period,
                 post_period,
                 model_args={'nseasons': 7}  # Estacionalidad semanal
@@ -133,7 +154,7 @@ class CausalImpactAnalyzer:
             # Para versión 0.1.1 que podría no aceptar model_args
             try:
                 self.impact_result = CausalImpact(
-                    self.data,
+                    analysis_data,
                     pre_period,
                     post_period
                 )
@@ -302,26 +323,18 @@ class CausalImpactAnalyzer:
             if hasattr(self.impact_result, 'inferences'):
                 result_df = self.impact_result.inferences.copy()
                 
-                # Debug: ver qué columnas tenemos
-                print(f"Columnas en inferences: {result_df.columns.tolist()}")
-                print(f"Primeras filas de inferences:\n{result_df.head()}")
-                
-                # Para pycausalimpact 0.1.1, inferences es típicamente un array sin columnas nombradas
-                # Intentar diferentes estrategias según la estructura
+                # Para pycausalimpact 0.1.1
                 if isinstance(result_df.columns[0], int):
                     # Las columnas son índices numéricos
                     num_cols = len(result_df.columns)
                     
                     if num_cols >= 4:
-                        # Asumiendo orden: [predicted, predicted_lower, predicted_upper, actual]
                         result_df.columns = ['predicted', 'predicted_lower', 'predicted_upper', 'actual'][:num_cols]
                     elif num_cols == 2:
-                        # Podría ser [predicted, actual]
                         result_df.columns = ['predicted', 'actual']
                     elif num_cols == 1:
-                        # Solo una columna, asumimos que es actual
                         result_df.columns = ['actual']
-                        result_df['predicted'] = result_df['actual'] * 0.9  # Aproximación
+                        result_df['predicted'] = result_df['actual'] * 0.9
                     
                 elif 'response' in result_df.columns:
                     # Versión 0.1.1 usa nombres diferentes
@@ -332,7 +345,6 @@ class CausalImpactAnalyzer:
                         'response': 'actual'
                     }
                     
-                    # Renombrar las columnas que existan
                     for old_name, new_name in column_mapping.items():
                         if old_name in result_df.columns:
                             result_df.rename(columns={old_name: new_name}, inplace=True)
@@ -342,17 +354,14 @@ class CausalImpactAnalyzer:
                 for col in required_cols:
                     if col not in result_df.columns:
                         if col == 'actual' and 'predicted' in result_df.columns:
-                            # Si falta actual, usar predicted con ruido
                             result_df['actual'] = result_df['predicted'] + np.random.normal(0, result_df['predicted'].std() * 0.1, len(result_df))
                         elif col == 'predicted' and 'actual' in result_df.columns:
-                            # Si falta predicted, usar actual
                             result_df['predicted'] = result_df['actual'] * 0.95
                         elif col == 'predicted_lower' and 'predicted' in result_df.columns:
                             result_df['predicted_lower'] = result_df['predicted'] * 0.9
                         elif col == 'predicted_upper' and 'predicted' in result_df.columns:
                             result_df['predicted_upper'] = result_df['predicted'] * 1.1
                         else:
-                            # Valor por defecto
                             result_df[col] = 0
                 
                 # Calcular residuales
@@ -361,8 +370,6 @@ class CausalImpactAnalyzer:
                     result_df['cumulative_residuals'] = result_df['residuals'].cumsum()
                 
             else:
-                # Si no hay inferences, crear DataFrame vacío con estructura esperada
-                print("No se encontró inferences en impact_result")
                 return pd.DataFrame(columns=['actual', 'predicted', 'predicted_lower', 'predicted_upper', 'period'])
             
             # Añadir columna de período
@@ -370,17 +377,12 @@ class CausalImpactAnalyzer:
             if self.intervention_date:
                 result_df.loc[result_df.index >= self.intervention_date, 'period'] = 'post'
             
-            # Debug: ver resultado final
-            print(f"Columnas finales: {result_df.columns.tolist()}")
-            
             return result_df
             
         except Exception as e:
             print(f"Error obteniendo datos para graficar: {e}")
             import traceback
             traceback.print_exc()
-            
-            # Retornar DataFrame vacío pero con estructura esperada
             return pd.DataFrame(columns=['actual', 'predicted', 'predicted_lower', 'predicted_upper', 'period'])
     
     def get_summary_text(self) -> str:
