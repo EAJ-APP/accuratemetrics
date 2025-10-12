@@ -1,5 +1,5 @@
 """
-Visualizaciones para Causal Impact
+Visualizaciones para Causal Impact - VERSIÓN CORREGIDA
 """
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -77,18 +77,22 @@ class ImpactVisualizer:
             row_heights=[0.4, 0.3, 0.3]
         )
         
-        # Preparar datos de fechas
-        # IMPORTANTE: Usar el índice original para las líneas principales
+        # ✅ CORRECCIÓN PRINCIPAL: Convertir índice a lista de forma segura
+        # Esto evita el error de operaciones con Timestamps
         dates = plot_data.index
         
-        # Para las bandas de confianza, necesitamos listas de Python
-        # Convertir a lista de forma segura
-        if hasattr(dates, 'tolist'):
+        # Convertir a lista de Python de forma explícita
+        if isinstance(dates, pd.DatetimeIndex):
+            dates_list = dates.to_pydatetime().tolist()
+        elif hasattr(dates, 'tolist'):
             dates_list = dates.tolist()
         else:
             dates_list = list(dates)
         
+        # ===================================================================
         # Panel 1: Observado vs Predicho
+        # ===================================================================
+        
         # Línea de valores observados
         fig.add_trace(
             go.Scatter(
@@ -115,13 +119,16 @@ class ImpactVisualizer:
             row=1, col=1
         )
         
-        # Banda de confianza - usando concatenación de listas
+        # ✅ Banda de confianza - usando concatenación segura de listas
         upper_values = predicted_upper.values.tolist() if hasattr(predicted_upper, 'values') else list(predicted_upper)
         lower_values = predicted_lower.values.tolist() if hasattr(predicted_lower, 'values') else list(predicted_lower)
         
+        # Crear la lista de fechas concatenada (forward + backward)
+        dates_concat = dates_list + dates_list[::-1]
+        
         fig.add_trace(
             go.Scatter(
-                x=dates_list + dates_list[::-1],
+                x=dates_concat,
                 y=upper_values + lower_values[::-1],
                 fill='toself',
                 fillcolor='rgba(0, 100, 255, 0.2)',
@@ -132,7 +139,10 @@ class ImpactVisualizer:
             row=1, col=1
         )
         
+        # ===================================================================
         # Panel 2: Efecto Puntual
+        # ===================================================================
+        
         effect = actual_data - predicted_data
         effect_upper = actual_data - predicted_lower
         effect_lower = actual_data - predicted_upper
@@ -155,7 +165,7 @@ class ImpactVisualizer:
         
         fig.add_trace(
             go.Scatter(
-                x=dates_list + dates_list[::-1],
+                x=dates_concat,
                 y=effect_upper_values + effect_lower_values[::-1],
                 fill='toself',
                 fillcolor='rgba(0, 255, 0, 0.2)',
@@ -168,7 +178,10 @@ class ImpactVisualizer:
         # Línea en cero
         fig.add_hline(y=0, line_dash="dot", line_color="gray", row=2, col=1)
         
+        # ===================================================================
         # Panel 3: Efecto Acumulado
+        # ===================================================================
+        
         cumulative_effect = effect.cumsum()
         cumulative_upper = effect_upper.cumsum()
         cumulative_lower = effect_lower.cumsum()
@@ -191,7 +204,7 @@ class ImpactVisualizer:
         
         fig.add_trace(
             go.Scatter(
-                x=dates_list + dates_list[::-1],
+                x=dates_concat,
                 y=cum_upper_values + cum_lower_values[::-1],
                 fill='toself',
                 fillcolor='rgba(255, 165, 0, 0.2)',
@@ -204,7 +217,10 @@ class ImpactVisualizer:
         # Línea en cero
         fig.add_hline(y=0, line_dash="dot", line_color="gray", row=3, col=1)
         
+        # ===================================================================
         # Línea vertical de intervención
+        # ===================================================================
+        
         # Convertir intervention_date a timestamp si es necesario
         if isinstance(intervention_date, pd.Timestamp):
             intervention_ts = intervention_date
@@ -220,7 +236,10 @@ class ImpactVisualizer:
                 row=row, col=1
             )
         
-        # Actualizar layout
+        # ===================================================================
+        # Layout final
+        # ===================================================================
+        
         fig.update_layout(
             title=title or f"Análisis de Impacto Causal - {metric_name}",
             height=900,
