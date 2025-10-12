@@ -7,8 +7,7 @@ import matplotlib.pyplot as plt
 from typing import Dict, Optional, Tuple, Iterable
 
 
-# --- Configuración de mapeo de columnas esperadas ---
-# Puedes ampliar listas si en tu pipeline aparecen alias nuevos.
+# --- Mapeo de columnas esperadas ---
 COLUMN_MAPPING: Dict[str, Iterable] = {
     "actual": ["actual", "response", "y", 0],
     "predicted": ["predicted", "preds", "point_pred", "point_prediction", 1],
@@ -27,19 +26,12 @@ def _get_column(df: pd.DataFrame, key: str, required: bool = True) -> Optional[p
     """
     candidates = COLUMN_MAPPING.get(key, [])
     for col_name in candidates:
-        # acceso por índice
         if isinstance(col_name, int):
             if col_name < len(df.columns):
-                col_data = df.iloc[:, col_name]
-                # print(f"DEBUG {key}: usando índice {col_name} -> {col_data.head().tolist()}")
-                return col_data
-        # acceso por nombre exacto
+                return df.iloc[:, col_name]
         elif col_name in df.columns:
-            col_data = df[col_name]
-            # print(f"DEBUG {key}: usando nombre '{col_name}' -> {col_data.head().tolist()}")
-            return col_data
+            return df[col_name]
 
-    # No encontrado
     if required:
         raise ValueError(
             f"No se encontró la columna para '{key}'. "
@@ -51,7 +43,7 @@ def _get_column(df: pd.DataFrame, key: str, required: bool = True) -> Optional[p
 
 def _padded_limits(*series: Iterable[pd.Series], pad_ratio: float = 0.05) -> Optional[Tuple[float, float]]:
     """
-    Calcula límites ymin, ymax con un pequeño padding para que el eje Y se adapte a los datos.
+    Calcula límites ymin, ymax con padding para ajustar el eje Y a los datos.
     Si no hay datos válidos, devuelve None y deja que Matplotlib autoescale.
     """
     vals_list = []
@@ -71,7 +63,6 @@ def _padded_limits(*series: Iterable[pd.Series], pad_ratio: float = 0.05) -> Opt
         return None
 
     if vmin == vmax:
-        # Serie plana: crea un margen artificial
         delta = 1.0 if vmax == 0 else abs(vmax) * 0.1
         return (vmin - delta, vmax + delta)
 
@@ -90,15 +81,12 @@ def plot_observed_vs_predicted(df: pd.DataFrame, intervention_date: Optional[pd.
     ax.plot(df.index, actual, label="Observado", linewidth=2)
     ax.plot(df.index, predicted, label="Predicho", linewidth=2, linestyle="--")
 
-    # Relleno de intervalo si existe
     if lower is not None and upper is not None:
         ax.fill_between(df.index, lower, upper, alpha=0.15, label="IC Predicho")
 
-    # Línea de intervención
     if intervention_date is not None:
         ax.axvline(pd.to_datetime(intervention_date), linestyle=":", linewidth=1.5, label="Intervención")
 
-    # Límites dinámicos
     limits = _padded_limits(actual, predicted, lower, upper)
     if limits:
         ax.set_ylim(*limits)
@@ -155,17 +143,4 @@ def plot_cumulative_effect(df: pd.DataFrame, intervention_date: Optional[pd.Time
     return fig
 
 
-def plot_impact_dashboard(df: pd.DataFrame, intervention_date: Optional[pd.Timestamp] = None) -> Dict[str, plt.Figure]:
-    """
-    Devuelve las 3 figuras principales para el dashboard:
-    - observado_vs_predicho
-    - efecto_puntual
-    - efecto_acumulado
-    Lanza errores claros si faltan columnas críticas.
-    """
-    figs = {
-        "observado_vs_predicho": plot_observed_vs_predicted(df, intervention_date),
-        "efecto_puntual": plot_point_effect(df, intervention_date),
-        "efecto_acumulado": plot_cumulative_effect(df, intervention_date),
-    }
-    return figs
+def plot_impact_dashboard(df: pd.DataFrame, intervention_date: Optional[pd.Timestamp] = None):
