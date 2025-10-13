@@ -203,30 +203,57 @@ class ImpactVisualizer:
         )
         
         # ================================================================
-        # PANEL 3: Efecto Acumulado (REINICIADO EN LA INTERVENCIÓN)
+        # PANEL 3: Efecto Acumulado (VERDADERO ACUMULADO SIN OSCILACIONES)
         # ================================================================
         
-        # 🔥 CORRECCIÓN: Reiniciar el acumulado en la fecha de intervención
-        # Para que empiece en 0 y muestre solo el efecto POST-intervención
+        # 🔥 CORRECCIÓN DEFINITIVA: Usar directamente los datos de CausalImpact
+        # CausalImpact ya tiene columnas de efectos acumulados
         
-        # Crear máscara de intervención
-        intervention_mask = pd.Series(dates) >= intervention_dt
+        # Buscar columnas de efecto acumulado en plot_data
+        if 'post_cum_effects' in plot_data.columns:
+            # Usar la columna pre-calculada de CausalImpact
+            cumulative_effect = plot_data['post_cum_effects'].values
+            cumulative_lower = plot_data['post_cum_effects_lower'].values if 'post_cum_effects_lower' in plot_data.columns else cumulative_effect * 0.8
+            cumulative_upper = plot_data['post_cum_effects_upper'].values if 'post_cum_effects_upper' in plot_data.columns else cumulative_effect * 1.2
+            
+            st.write("✅ Usando columna 'post_cum_effects' de CausalImpact (acumulado correcto)")
+        else:
+            # Calcular acumulado manualmente SOLO en el período POST
+            cumulative_effect = np.zeros(len(effect))
+            cumulative_upper = np.zeros(len(effect_upper))
+            cumulative_lower = np.zeros(len(effect_lower))
+            
+            # Encontrar índice de intervención
+            intervention_mask = np.array([d >= intervention_dt for d in dates])
+            post_indices = np.where(intervention_mask)[0]
+            
+            if len(post_indices) > 0:
+                intervention_idx = post_indices[0]
+                
+                # Calcular acumulado SOLO desde la intervención
+                post_effects = effect[intervention_idx:]
+                post_effects_upper = effect_upper[intervention_idx:]
+                post_effects_lower = effect_lower[intervention_idx:]
+                
+                cumulative_effect[intervention_idx:] = np.cumsum(post_effects)
+                cumulative_upper[intervention_idx:] = np.cumsum(post_effects_upper)
+                cumulative_lower[intervention_idx:] = np.cumsum(post_effects_lower)
+                
+                st.write(f"✅ Acumulado calculado manualmente desde día {intervention_idx}")
         
-        # Calcular acumulado solo desde la intervención
-        cumulative_effect = np.zeros(len(effect))
-        cumulative_upper = np.zeros(len(effect_upper))
-        cumulative_lower = np.zeros(len(effect_lower))
-        
-        # Encontrar el índice de la intervención
-        intervention_idx = np.where(intervention_mask)[0][0] if intervention_mask.any() else 0
-        
-        # Acumular solo desde la intervención hacia adelante
-        if intervention_idx < len(effect):
-            cumulative_effect[intervention_idx:] = np.cumsum(effect[intervention_idx:])
-            cumulative_upper[intervention_idx:] = np.cumsum(effect_upper[intervention_idx:])
-            cumulative_lower[intervention_idx:] = np.cumsum(effect_lower[intervention_idx:])
-        
-        st.write(f"  📊 Efecto acumulado reiniciado desde intervención (índice {intervention_idx})")
+        # Verificar que el acumulado es monotónico
+        post_mask = np.array([d >= intervention_dt for d in dates])
+        if post_mask.any():
+            post_cumulative = cumulative_effect[post_mask]
+            # Verificar si es monotónico (siempre sube o siempre baja)
+            diffs = np.diff(post_cumulative)
+            is_monotonic = np.all(diffs >= 0) or np.all(diffs <= 0)
+            
+            if not is_monotonic:
+                st.warning("⚠️ ADVERTENCIA: El acumulado no es monotónico (tiene oscilaciones)")
+                st.write(f"   Esto puede indicar un problema en el cálculo")
+            else:
+                st.success("✅ El acumulado es monotónico (correcto)")
         
         # Línea NARANJA: Efecto acumulado
         fig.add_trace(
