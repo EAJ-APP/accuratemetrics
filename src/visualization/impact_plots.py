@@ -267,8 +267,30 @@ class ImpactVisualizer:
         )
         
         # ================================================================
-        # Layout final
+        # Layout final con EJES AJUSTADOS
         # ================================================================
+        
+        # Calcular rangos óptimos para cada panel
+        
+        # Panel 1: Observado vs Predicho
+        panel1_min = min(actual_data.min(), predicted_data.min(), predicted_lower.min())
+        panel1_max = max(actual_data.max(), predicted_data.max(), predicted_upper.max())
+        panel1_padding = (panel1_max - panel1_min) * 0.1
+        
+        # Panel 2: Efecto puntual
+        panel2_min = min(effect.min(), effect_lower.min())
+        panel2_max = max(effect.max(), effect_upper.max())
+        panel2_padding = max(abs(panel2_min), abs(panel2_max)) * 0.15
+        
+        # Panel 3: Efecto acumulado
+        panel3_min = min(cumulative_effect.min(), cumulative_lower.min())
+        panel3_max = max(cumulative_effect.max(), cumulative_upper.max())
+        panel3_padding = max(abs(panel3_min), abs(panel3_max)) * 0.15
+        
+        st.write(f"📊 Rangos calculados:")
+        st.write(f"  Panel 1: {panel1_min:.0f} a {panel1_max:.0f}")
+        st.write(f"  Panel 2: {panel2_min:.0f} a {panel2_max:.0f}")
+        st.write(f"  Panel 3: {panel3_min:.0f} a {panel3_max:.0f}")
         
         fig.update_layout(
             title={
@@ -294,14 +316,41 @@ class ImpactVisualizer:
             margin=dict(r=200)  # Más espacio para la leyenda
         )
         
-        # Actualizar ejes
+        # Actualizar ejes X
         fig.update_xaxes(title_text="", showgrid=True, row=1, col=1)
         fig.update_xaxes(title_text="", showgrid=True, row=2, col=1)
         fig.update_xaxes(title_text="<b>Fecha</b>", showgrid=True, row=3, col=1)
         
-        fig.update_yaxes(title_text=f"<b>{metric_name}</b>", showgrid=True, row=1, col=1)
-        fig.update_yaxes(title_text="<b>Diferencia</b>", showgrid=True, row=2, col=1)
-        fig.update_yaxes(title_text="<b>Acumulado</b>", showgrid=True, row=3, col=1)
+        # Actualizar ejes Y con RANGOS AJUSTADOS
+        fig.update_yaxes(
+            title_text=f"<b>{metric_name}</b>", 
+            showgrid=True, 
+            range=[panel1_min - panel1_padding, panel1_max + panel1_padding],
+            row=1, 
+            col=1
+        )
+        
+        fig.update_yaxes(
+            title_text="<b>Diferencia</b>", 
+            showgrid=True,
+            range=[panel2_min - panel2_padding, panel2_max + panel2_padding],
+            zeroline=True,
+            zerolinewidth=2,
+            zerolinecolor='gray',
+            row=2, 
+            col=1
+        )
+        
+        fig.update_yaxes(
+            title_text="<b>Acumulado</b>", 
+            showgrid=True,
+            range=[panel3_min - panel3_padding, panel3_max + panel3_padding],
+            zeroline=True,
+            zerolinewidth=2,
+            zerolinecolor='gray',
+            row=3, 
+            col=1
+        )
         
         st.success("✅ Gráfico generado exitosamente")
         
