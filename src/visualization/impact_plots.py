@@ -203,59 +203,63 @@ class ImpactVisualizer:
         )
         
         # ================================================================
-        # PANEL 3: Efecto Acumulado (VERDADERO ACUMULADO SIN OSCILACIONES)
+        # PANEL 3: Efecto Acumulado VERDADERO (Sin Oscilaciones)
         # ================================================================
         
-        # 🔥 CORRECCIÓN DEFINITIVA: Usar directamente los datos de CausalImpact
-        # CausalImpact ya tiene columnas de efectos acumulados
+        # 🔥 SOLUCIÓN DEFINITIVA: Acumular SOLO el período POST-intervención
+        # El acumulado debe empezar en 0 en la intervención y solo sumar hacia adelante
         
-        # Buscar columnas de efecto acumulado en plot_data
-        if 'post_cum_effects' in plot_data.columns:
-            # Usar la columna pre-calculada de CausalImpact
-            cumulative_effect = plot_data['post_cum_effects'].values
-            cumulative_lower = plot_data['post_cum_effects_lower'].values if 'post_cum_effects_lower' in plot_data.columns else cumulative_effect * 0.8
-            cumulative_upper = plot_data['post_cum_effects_upper'].values if 'post_cum_effects_upper' in plot_data.columns else cumulative_effect * 1.2
-            
-            st.write("✅ Usando columna 'post_cum_effects' de CausalImpact (acumulado correcto)")
-        else:
-            # Calcular acumulado manualmente SOLO en el período POST
-            cumulative_effect = np.zeros(len(effect))
-            cumulative_upper = np.zeros(len(effect_upper))
-            cumulative_lower = np.zeros(len(effect_lower))
-            
-            # Encontrar índice de intervención
-            intervention_mask = np.array([d >= intervention_dt for d in dates])
-            post_indices = np.where(intervention_mask)[0]
-            
-            if len(post_indices) > 0:
-                intervention_idx = post_indices[0]
-                
-                # Calcular acumulado SOLO desde la intervención
-                post_effects = effect[intervention_idx:]
-                post_effects_upper = effect_upper[intervention_idx:]
-                post_effects_lower = effect_lower[intervention_idx:]
-                
-                cumulative_effect[intervention_idx:] = np.cumsum(post_effects)
-                cumulative_upper[intervention_idx:] = np.cumsum(post_effects_upper)
-                cumulative_lower[intervention_idx:] = np.cumsum(post_effects_lower)
-                
-                st.write(f"✅ Acumulado calculado manualmente desde día {intervention_idx}")
+        # Crear array de ceros del mismo tamaño
+        cumulative_effect = np.zeros(len(effect))
+        cumulative_upper = np.zeros(len(effect_upper))
+        cumulative_lower = np.zeros(len(effect_lower))
         
-        # Verificar que el acumulado es monotónico
-        post_mask = np.array([d >= intervention_dt for d in dates])
-        if post_mask.any():
-            post_cumulative = cumulative_effect[post_mask]
-            # Verificar si es monotónico (siempre sube o siempre baja)
-            diffs = np.diff(post_cumulative)
-            is_monotonic = np.all(diffs >= 0) or np.all(diffs <= 0)
+        # Encontrar el índice donde empieza la intervención
+        intervention_indices = [i for i, d in enumerate(dates) if d >= intervention_dt]
+        
+        if intervention_indices:
+            intervention_idx = intervention_indices[0]
             
-            if not is_monotonic:
-                st.warning("⚠️ ADVERTENCIA: El acumulado no es monotónico (tiene oscilaciones)")
-                st.write(f"   Esto puede indicar un problema en el cálculo")
+            st.write(f"📊 Calculando acumulado desde índice {intervention_idx} (fecha: {dates[intervention_idx].date()})")
+            
+            # Extraer solo los efectos POST-intervención
+            effect_post = effect[intervention_idx:].copy()
+            effect_upper_post = effect_upper[intervention_idx:].copy()
+            effect_lower_post = effect_lower[intervention_idx:].copy()
+            
+            # Calcular el acumulado SOLO del período POST
+            cum_post = np.cumsum(effect_post)
+            cum_upper_post = np.cumsum(effect_upper_post)
+            cum_lower_post = np.cumsum(effect_lower_post)
+            
+            # Asignar al array completo (pre queda en 0, post tiene el acumulado)
+            cumulative_effect[intervention_idx:] = cum_post
+            cumulative_upper[intervention_idx:] = cum_upper_post
+            cumulative_lower[intervention_idx:] = cum_lower_post
+            
+            # Verificar monotonía SOLO en el período POST
+            is_increasing = np.all(np.diff(cum_post) >= -0.01)  # Pequeña tolerancia para errores de redondeo
+            is_decreasing = np.all(np.diff(cum_post) <= 0.01)
+            
+            st.write(f"📊 Valores del acumulado POST:")
+            st.write(f"   Inicio: {cum_post[0]:.2f}")
+            st.write(f"   Final: {cum_post[-1]:.2f}")
+            st.write(f"   Min: {cum_post.min():.2f}, Max: {cum_post.max():.2f}")
+            
+            if is_increasing:
+                st.success("✅ Acumulado es monotónicamente creciente (correcto)")
+            elif is_decreasing:
+                st.info("✅ Acumulado es monotónicamente decreciente (correcto)")
             else:
-                st.success("✅ El acumulado es monotónico (correcto)")
+                st.warning("⚠️ Acumulado tiene oscilaciones")
+                # Mostrar donde oscila
+                diffs = np.diff(cum_post)
+                sign_changes = np.where(np.diff(np.sign(diffs)) != 0)[0]
+                st.write(f"   Cambios de dirección en índices: {sign_changes[:5]}")
+        else:
+            st.error("❌ No se encontró el índice de intervención")
         
-        # Línea NARANJA: Efecto acumulado
+        # Graficar el acumulado
         fig.add_trace(
             go.Scatter(
                 x=dates_list,
@@ -266,7 +270,7 @@ class ImpactVisualizer:
                 fill='tozeroy',
                 fillcolor='rgba(251, 140, 0, 0.2)',
                 showlegend=True,
-                hovertemplate='Acumulado: %{y:+,.0f}<extra></extra>'
+                hovertemplate='Fecha: %{x}<br>Acumulado: %{y:+,.0f}<extra></extra>'
             ),
             row=3, col=1
         )
