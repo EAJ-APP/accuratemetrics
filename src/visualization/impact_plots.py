@@ -203,12 +203,30 @@ class ImpactVisualizer:
         )
         
         # ================================================================
-        # PANEL 3: Efecto Acumulado
+        # PANEL 3: Efecto Acumulado (REINICIADO EN LA INTERVENCIÓN)
         # ================================================================
         
-        cumulative_effect = np.cumsum(effect)
-        cumulative_upper = np.cumsum(effect_upper)
-        cumulative_lower = np.cumsum(effect_lower)
+        # 🔥 CORRECCIÓN: Reiniciar el acumulado en la fecha de intervención
+        # Para que empiece en 0 y muestre solo el efecto POST-intervención
+        
+        # Crear máscara de intervención
+        intervention_mask = pd.Series(dates) >= intervention_dt
+        
+        # Calcular acumulado solo desde la intervención
+        cumulative_effect = np.zeros(len(effect))
+        cumulative_upper = np.zeros(len(effect_upper))
+        cumulative_lower = np.zeros(len(effect_lower))
+        
+        # Encontrar el índice de la intervención
+        intervention_idx = np.where(intervention_mask)[0][0] if intervention_mask.any() else 0
+        
+        # Acumular solo desde la intervención hacia adelante
+        if intervention_idx < len(effect):
+            cumulative_effect[intervention_idx:] = np.cumsum(effect[intervention_idx:])
+            cumulative_upper[intervention_idx:] = np.cumsum(effect_upper[intervention_idx:])
+            cumulative_lower[intervention_idx:] = np.cumsum(effect_lower[intervention_idx:])
+        
+        st.write(f"  📊 Efecto acumulado reiniciado desde intervención (índice {intervention_idx})")
         
         # Línea NARANJA: Efecto acumulado
         fig.add_trace(
@@ -397,16 +415,31 @@ class ImpactVisualizer:
     def plot_summary_metrics(summary: Dict[str, Any]) -> go.Figure:
         """
         Crea un gráfico de barras con las métricas principales
-        MEJORADO: Más claro y visual
+        CORREGIDO: Mostrar average vs cumulative correctamente
         """
-        # Extraer datos
+        # Extraer datos CORRECTAMENTE
+        # 🔥 IMPORTANTE: average y cumulative son DIFERENTES
+        
+        # Efecto PROMEDIO (por día)
         avg_effect = summary['average']['rel_effect'] * 100
         avg_lower = summary['average']['rel_effect_lower'] * 100
         avg_upper = summary['average']['rel_effect_upper'] * 100
         
+        # Efecto ACUMULADO (total del período)
         cum_effect = summary['cumulative']['rel_effect'] * 100
         cum_lower = summary['cumulative']['rel_effect_lower'] * 100
         cum_upper = summary['cumulative']['rel_effect_upper'] * 100
+        
+        # 🔥 DEBUG: Verificar que sean diferentes
+        import streamlit as st
+        st.write(f"🔍 DEBUG Resumen:")
+        st.write(f"  Average effect: {avg_effect:.2f}%")
+        st.write(f"  Cumulative effect: {cum_effect:.2f}%")
+        st.write(f"  ¿Son iguales? {avg_effect == cum_effect}")
+        
+        if avg_effect == cum_effect:
+            st.warning("⚠️ ADVERTENCIA: Average y Cumulative son iguales. Esto puede ser un bug del summary_data.")
+            st.info("💡 Esto ocurre cuando CausalImpact no calcula correctamente el summary. Los valores se calculan desde inferences.")
         
         # Colores según si es positivo o negativo
         avg_color = '#43A047' if avg_effect >= 0 else '#E53935'
@@ -415,16 +448,20 @@ class ImpactVisualizer:
         # Crear figura
         fig = go.Figure()
         
-        # Barras principales
+        # Barras principales con VALORES ABSOLUTOS también
         fig.add_trace(go.Bar(
             x=['Efecto Promedio<br>Diario', 'Efecto Total<br>Acumulado'],
             y=[avg_effect, cum_effect],
             marker_color=[avg_color, cum_color],
-            text=[f"{avg_effect:+.2f}%", f"{cum_effect:+.2f}%"],
+            text=[
+                f"{avg_effect:+.2f}%<br>({summary['average']['abs_effect']:+,.0f})",
+                f"{cum_effect:+.2f}%<br>({summary['cumulative']['abs_effect']:+,.0f})"
+            ],
             textposition='outside',
-            textfont=dict(size=16, family="Arial Black"),
+            textfont=dict(size=14, family="Arial"),
             name='Efecto',
-            width=0.5
+            width=0.5,
+            hovertemplate='%{x}<br>Relativo: %{y:.2f}%<extra></extra>'
         ))
         
         # Barras de error (intervalos de confianza)
