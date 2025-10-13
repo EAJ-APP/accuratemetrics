@@ -26,8 +26,17 @@ class ImpactVisualizer:
         if plot_data.empty:
             raise ValueError("El DataFrame está vacío")
         
+        # DEBUG: Imprimir info
+        import streamlit as st
+        st.write("🔍 DEBUG plot_impact_analysis:")
+        st.write(f"  - Shape: {plot_data.shape}")
+        st.write(f"  - Columnas: {plot_data.columns.tolist()}")
+        st.write(f"  - Tiene 'response': {'response' in plot_data.columns}")
+        if 'response' in plot_data.columns:
+            st.write(f"  - Response nulos: {plot_data['response'].isnull().sum()}")
+            st.write(f"  - Response sample: {plot_data['response'].head(3).tolist()}")
+        
         # Obtener las columnas necesarias
-        # pycausalimpact 0.1.1 usa: response, preds, preds_lower, preds_upper
         actual_data = plot_data['response']
         predicted_data = plot_data['preds']
         predicted_lower = plot_data['preds_lower']
