@@ -203,63 +203,73 @@ class ImpactVisualizer:
         )
         
         # ================================================================
-        # PANEL 3: Efecto Acumulado VERDADERO (Sin Oscilaciones)
+        # DEBUG EN PANTALLA (antes del Panel 3)
         # ================================================================
         
-        # 🔥 SOLUCIÓN DEFINITIVA: Acumular SOLO el período POST-intervención
-        # El acumulado debe empezar en 0 en la intervención y solo sumar hacia adelante
+        st.markdown("---")
+        st.subheader("🔍 DEBUG - Efecto Acumulado")
         
-        # Crear array de ceros del mismo tamaño
-        cumulative_effect = np.zeros(len(effect))
-        cumulative_upper = np.zeros(len(effect_upper))
-        cumulative_lower = np.zeros(len(effect_lower))
-        
-        # Encontrar el índice donde empieza la intervención
+        # Encontrar índice de intervención
         intervention_indices = [i for i, d in enumerate(dates) if d >= intervention_dt]
         
         if intervention_indices:
             intervention_idx = intervention_indices[0]
             
-            st.write(f"📊 Calculando acumulado desde índice {intervention_idx} (fecha: {dates[intervention_idx].date()})")
+            st.write(f"**Índice de intervención:** {intervention_idx}")
+            st.write(f"**Fecha de intervención:** {dates[intervention_idx].date()}")
+            st.write(f"**Total de días POST:** {len(dates) - intervention_idx}")
             
-            # Extraer solo los efectos POST-intervención
+            # Extraer efectos POST
             effect_post = effect[intervention_idx:].copy()
-            effect_upper_post = effect_upper[intervention_idx:].copy()
-            effect_lower_post = effect_lower[intervention_idx:].copy()
             
-            # Calcular el acumulado SOLO del período POST
+            st.write(f"\n**Efectos diarios POST (primeros 5):**")
+            for i in range(min(5, len(effect_post))):
+                st.write(f"  Día {i+1}: {effect_post[i]:+.2f}")
+            
+            # Calcular acumulado
             cum_post = np.cumsum(effect_post)
-            cum_upper_post = np.cumsum(effect_upper_post)
-            cum_lower_post = np.cumsum(effect_lower_post)
             
-            # Asignar al array completo (pre queda en 0, post tiene el acumulado)
-            cumulative_effect[intervention_idx:] = cum_post
-            cumulative_upper[intervention_idx:] = cum_upper_post
-            cumulative_lower[intervention_idx:] = cum_lower_post
+            st.write(f"\n**Acumulado POST (primeros 5):**")
+            for i in range(min(5, len(cum_post))):
+                st.write(f"  Día {i+1}: {cum_post[i]:+.2f}")
             
-            # Verificar monotonía SOLO en el período POST
-            is_increasing = np.all(np.diff(cum_post) >= -0.01)  # Pequeña tolerancia para errores de redondeo
-            is_decreasing = np.all(np.diff(cum_post) <= 0.01)
+            st.write(f"\n**Último valor acumulado:** {cum_post[-1]:+.2f}")
+            st.write(f"**Mínimo acumulado:** {cum_post.min():+.2f}")
+            st.write(f"**Máximo acumulado:** {cum_post.max():+.2f}")
             
-            st.write(f"📊 Valores del acumulado POST:")
-            st.write(f"   Inicio: {cum_post[0]:.2f}")
-            st.write(f"   Final: {cum_post[-1]:.2f}")
-            st.write(f"   Min: {cum_post.min():.2f}, Max: {cum_post.max():.2f}")
+            # Verificar monotonía
+            diffs = np.diff(cum_post)
+            changes = np.sum(np.diff(np.sign(diffs)) != 0)
             
-            if is_increasing:
-                st.success("✅ Acumulado es monotónicamente creciente (correcto)")
-            elif is_decreasing:
-                st.info("✅ Acumulado es monotónicamente decreciente (correcto)")
+            if changes == 0:
+                st.success(f"✅ **Acumulado es monotónico** (sin cambios de dirección)")
             else:
-                st.warning("⚠️ Acumulado tiene oscilaciones")
-                # Mostrar donde oscila
-                diffs = np.diff(cum_post)
+                st.error(f"❌ **Acumulado tiene {changes} cambios de dirección** (oscila)")
+                
+                # Mostrar dónde oscila
                 sign_changes = np.where(np.diff(np.sign(diffs)) != 0)[0]
-                st.write(f"   Cambios de dirección en índices: {sign_changes[:5]}")
-        else:
-            st.error("❌ No se encontró el índice de intervención")
+                st.write(f"**Oscilaciones en días:** {sign_changes[:10] + 1}")  # +1 para numeración humana
         
-        # Graficar el acumulado
+        st.markdown("---")
+        
+        # ================================================================
+        # PANEL 3: Efecto Acumulado
+        # ================================================================
+        
+        # Crear array de ceros
+        cumulative_effect = np.zeros(len(effect))
+        cumulative_upper = np.zeros(len(effect_upper))
+        cumulative_lower = np.zeros(len(effect_lower))
+        
+        if intervention_indices:
+            intervention_idx = intervention_indices[0]
+            
+            # Calcular acumulado solo POST
+            cumulative_effect[intervention_idx:] = np.cumsum(effect[intervention_idx:])
+            cumulative_upper[intervention_idx:] = np.cumsum(effect_upper[intervention_idx:])
+            cumulative_lower[intervention_idx:] = np.cumsum(effect_lower[intervention_idx:])
+        
+        # Graficar
         fig.add_trace(
             go.Scatter(
                 x=dates_list,
