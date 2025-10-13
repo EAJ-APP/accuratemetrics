@@ -63,6 +63,7 @@ class CausalImpactAnalyzer:
     ) -> Dict[str, Any]:
         """
         Ejecuta el análisis de Causal Impact
+        MEJORADO: Mejor validación de datos
         """
         if not CAUSALIMPACT_AVAILABLE:
             raise ImportError("pycausalimpact no está instalado. Instala: pip install pycausalimpact")
@@ -105,14 +106,23 @@ class CausalImpactAnalyzer:
         # Filtrar datos al rango de análisis
         analysis_data = self.data.loc[pre_start:post_end].copy()
         
-        # Asegurar frecuencia diaria
+        # 🔥 CRÍTICO: Asegurar que el índice tiene frecuencia diaria
         if analysis_data.index.freq is None:
-            analysis_data.index = pd.DatetimeIndex(analysis_data.index, freq='D')
+            analysis_data = analysis_data.asfreq('D')
+            print("  ⚠️ Frecuencia del índice era None, establecida a 'D' (diaria)")
+        
+        # 🔥 NUEVO: Validar que no hay NaN en los datos
+        if analysis_data[self.metric_column].isnull().any():
+            print("  ⚠️ Datos contienen NaN, rellenando...")
+            analysis_data[self.metric_column] = analysis_data[self.metric_column].fillna(method='ffill').fillna(method='bfill')
         
         print(f"📊 Ejecutando análisis:")
         print(f"  Pre-período: {pre_start.date()} a {pre_end.date()} ({(pre_end - pre_start).days + 1} días)")
         print(f"  Post-período: {post_start.date()} a {post_end.date()} ({(post_end - post_start).days + 1} días)")
         print(f"  Total datos: {len(analysis_data)} días")
+        print(f"  Frecuencia del índice: {analysis_data.index.freq}")
+        print(f"  Rango de valores: {analysis_data[self.metric_column].min():.0f} - {analysis_data[self.metric_column].max():.0f}")
+        print(f"  Media: {analysis_data[self.metric_column].mean():.0f}")
         
         # 🔥 EJECUTAR CAUSALIMPACT
         try:
@@ -123,6 +133,7 @@ class CausalImpactAnalyzer:
                 post_period,
                 model_args={'nseasons': 7}
             )
+            print("✅ CausalImpact ejecutado con nseasons=7")
         except TypeError:
             # Si falla, intentar sin model_args
             print("⚠️ nseasons no soportado, ejecutando sin ese parámetro")
@@ -131,6 +142,7 @@ class CausalImpactAnalyzer:
                 pre_period,
                 post_period
             )
+            print("✅ CausalImpact ejecutado sin nseasons")
         except Exception as e:
             raise Exception(f"Error ejecutando CausalImpact: {str(e)}")
         
@@ -157,23 +169,56 @@ class CausalImpactAnalyzer:
     def _extract_summary(self) -> Dict[str, Any]:
         """
         Extrae el resumen del resultado de CausalImpact
+        MEJORADO: Mejor detección de valores vacíos
         """
         if not self.impact_result:
             return self._get_empty_summary()
         
         try:
+            # DEBUG: Ver qué atributos tiene el objeto
+            print("🔍 DEBUG - Atributos de CausalImpact:")
+            ci_attrs = [attr for attr in dir(self.impact_result) if not attr.startswith('_')]
+            print(f"  Atributos disponibles: {ci_attrs[:20]}")
+            
             # Intentar obtener summary_data (versión 0.1.1)
             if hasattr(self.impact_result, 'summary_data'):
                 summary_df = self.impact_result.summary_data
+                print("  ✅ Usando summary_data")
             elif hasattr(self.impact_result, 'summary'):
                 summary_df = self.impact_result.summary()
+                print("  ✅ Usando summary()")
             else:
-                print("⚠️ No se encontró summary_data ni summary(), usando inferences")
+                print("  ⚠️ No hay summary_data ni summary(), usando inferences")
                 return self._extract_from_inferences()
             
             print(f"📋 Summary DataFrame shape: {summary_df.shape}")
             print(f"📋 Summary columns: {summary_df.columns.tolist()}")
             print(f"📋 Summary index: {summary_df.index.tolist()}")
+            
+            # 🔥 NUEVO: Imprimir el contenido completo del summary
+            print("\n📊 CONTENIDO COMPLETO DEL SUMMARY:")
+            print(summary_df)
+            print("\n")
+            
+            # 🔥 CRÍTICO: Verificar si el summary tiene valores reales
+            # Si todos los valores son 0 o NaN, usar inferences
+            has_valid_values = False
+            
+            if 'average' in summary_df.columns:
+                # Verificar la columna 'average'
+                avg_actual = summary_df.loc['actual', 'average'] if 'actual' in summary_df.index else 0
+                avg_predicted = summary_df.loc['predicted', 'average'] if 'predicted' in summary_df.index else 0
+                
+                # Si ambos son > 0, tenemos valores válidos
+                if pd.notna(avg_actual) and pd.notna(avg_predicted) and (avg_actual > 0 or avg_predicted > 0):
+                    has_valid_values = True
+                    print(f"✅ Summary tiene valores válidos: actual={avg_actual:.2f}, predicted={avg_predicted:.2f}")
+                else:
+                    print(f"⚠️ Summary parece vacío: actual={avg_actual}, predicted={avg_predicted}")
+            
+            if not has_valid_values:
+                print("⚠️ Summary tiene todos los valores en 0 o NaN, calculando desde inferences")
+                return self._extract_from_inferences()
             
             # Función helper para obtener valores seguros
             def get_value(row_name, col_name, default=0):
@@ -232,6 +277,7 @@ class CausalImpactAnalyzer:
     def _extract_from_inferences(self) -> Dict[str, Any]:
         """
         Extrae métricas directamente del DataFrame de inferences
+        Usa las mismas columnas que el código de referencia de Colab
         """
         try:
             if not hasattr(self.impact_result, 'inferences'):
@@ -241,19 +287,38 @@ class CausalImpactAnalyzer:
             print(f"📊 Inferences shape: {inferences.shape}")
             print(f"📊 Inferences columns: {inferences.columns.tolist()}")
             
+            # 🔥 NUEVO: Imprimir primeras filas completas
+            print("\n📊 PRIMERAS 5 FILAS DE INFERENCES:")
+            print(inferences.head())
+            print("\n")
+            
             # Filtrar período post
             post_mask = inferences.index >= self.intervention_date
             post_data = inferences[post_mask]
             
             print(f"📊 Días post-intervención: {post_mask.sum()}")
             
-            # 🔥 CRÍTICO: Obtener valores reales desde los datos originales
-            # porque inferences no tiene 'response', solo tiene predicciones
+            # 🔥 IMPORTANTE: Detectar qué columna usar para predicciones
+            # Diferentes versiones de pycausalimpact usan nombres diferentes
+            pred_col = None
+            if 'point_pred' in inferences.columns:
+                pred_col = 'point_pred'
+                print("  ✅ Usando columna 'point_pred' (como en Colab)")
+            elif 'preds' in inferences.columns:
+                pred_col = 'preds'
+                print("  ✅ Usando columna 'preds'")
+            else:
+                print("  ❌ No se encontró columna de predicciones")
+                return self._get_empty_summary()
+            
+            # Obtener valores reales desde los datos originales
             actual_values = self.data.loc[post_data.index, self.metric_column].values
-            predicted_values = post_data['preds'].values
+            predicted_values = post_data[pred_col].values
             
             print(f"📊 Actual shape: {actual_values.shape}")
             print(f"📊 Predicted shape: {predicted_values.shape}")
+            print(f"📊 Actual sample: {actual_values[:3]}")
+            print(f"📊 Predicted sample: {predicted_values[:3]}")
             
             # Usar las variables correctas
             actual = actual_values
@@ -330,6 +395,7 @@ class CausalImpactAnalyzer:
     def get_plot_data(self) -> pd.DataFrame:
         """
         Retorna el DataFrame completo para graficar
+        Detecta automáticamente qué columna usar para predicciones
         """
         if not self.impact_result or not hasattr(self.impact_result, 'inferences'):
             return pd.DataFrame()
@@ -338,9 +404,31 @@ class CausalImpactAnalyzer:
             # Obtener inferences
             result_df = self.impact_result.inferences.copy()
             
+            # 🔥 Detectar columna de predicción
+            if 'point_pred' in result_df.columns:
+                pred_col = 'point_pred'
+            elif 'preds' in result_df.columns:
+                pred_col = 'preds'
+            else:
+                print("❌ No se encontró columna de predicciones en inferences")
+                return pd.DataFrame()
+            
+            # Renombrar a 'preds' si es necesario (para compatibilidad con visualización)
+            if pred_col != 'preds':
+                result_df['preds'] = result_df[pred_col]
+            
             # 🔥 CRÍTICO: Añadir columna 'response' con los valores reales
-            # desde self.data (los datos originales)
             result_df['response'] = self.data.loc[result_df.index, self.metric_column]
+            
+            # Detectar columnas de IC
+            if 'point_pred_lower' in result_df.columns:
+                result_df['preds_lower'] = result_df['point_pred_lower']
+                result_df['preds_upper'] = result_df['point_pred_upper']
+            # Si no existen, crearlas como aproximación
+            elif 'preds_lower' not in result_df.columns:
+                std = result_df['preds'].std()
+                result_df['preds_lower'] = result_df['preds'] - 2 * std
+                result_df['preds_upper'] = result_df['preds'] + 2 * std
             
             # Añadir columna de período
             result_df['period'] = 'pre'
