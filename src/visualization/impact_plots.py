@@ -1,6 +1,7 @@
 """
 Visualizaciones para Causal Impact - GRÁFICOS MEJORADOS
 Enfoque en claridad visual y mostrar TODAS las líneas
+Corrección de escalas absurdas en intervalos de confianza
 """
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -49,8 +50,35 @@ class ImpactVisualizer:
         # Extraer datos
         actual_data = plot_data['response'].values
         predicted_data = plot_data['preds'].values
-        predicted_lower = plot_data['preds_lower'].values
-        predicted_upper = plot_data['preds_upper'].values
+        predicted_lower_raw = plot_data['preds_lower'].values
+        predicted_upper_raw = plot_data['preds_upper'].values
+        
+        # 🔥 CRÍTICO: Limitar intervalos de confianza a valores razonables
+        # A veces pycausalimpact genera ICs absurdos (millones cuando datos son miles)
+        
+        # Calcular desviación estándar de los datos para tener una referencia
+        data_std = actual_data.std()
+        data_mean = actual_data.mean()
+        
+        # Los ICs no deberían estar más allá de ±4 desviaciones estándar de la predicción
+        max_deviation = 4 * data_std
+        
+        predicted_lower = np.maximum(predicted_lower_raw, predicted_data - max_deviation)
+        predicted_upper = np.minimum(predicted_upper_raw, predicted_data + max_deviation)
+        
+        # Asegurar que lower < upper
+        predicted_lower = np.minimum(predicted_lower, predicted_data)
+        predicted_upper = np.maximum(predicted_upper, predicted_data)
+        
+        st.write(f"  📊 Estadísticas de datos:")
+        st.write(f"    - Media: {data_mean:.0f}")
+        st.write(f"    - Std: {data_std:.0f}")
+        st.write(f"    - Max deviation permitida: ±{max_deviation:.0f}")
+        st.write(f"  📊 ICs originales vs ajustados:")
+        st.write(f"    - Lower raw (primeros 3): {predicted_lower_raw[:3]}")
+        st.write(f"    - Lower ajustado (primeros 3): {predicted_lower[:3]}")
+        st.write(f"    - Upper raw (primeros 3): {predicted_upper_raw[:3]}")
+        st.write(f"    - Upper ajustado (primeros 3): {predicted_upper[:3]}")
         
         # Fechas
         dates = plot_data.index.to_pydatetime()
@@ -271,24 +299,31 @@ class ImpactVisualizer:
         # ================================================================
         
         # Calcular rangos óptimos para cada panel
+        # Solo usar valores razonables (no los ICs crudos que pueden ser absurdos)
         
-        # Panel 1: Observado vs Predicho
-        panel1_min = min(actual_data.min(), predicted_data.min(), predicted_lower.min())
-        panel1_max = max(actual_data.max(), predicted_data.max(), predicted_upper.max())
-        panel1_padding = (panel1_max - panel1_min) * 0.1
+        # Panel 1: Observado vs Predicho (usar solo actual y predicho base)
+        panel1_values = np.concatenate([actual_data, predicted_data])
+        panel1_min = panel1_values.min()
+        panel1_max = panel1_values.max()
+        panel1_range = panel1_max - panel1_min
+        panel1_padding = panel1_range * 0.15  # 15% padding
         
         # Panel 2: Efecto puntual
-        panel2_min = min(effect.min(), effect_lower.min())
-        panel2_max = max(effect.max(), effect_upper.max())
-        panel2_padding = max(abs(panel2_min), abs(panel2_max)) * 0.15
+        panel2_values = effect
+        panel2_min = panel2_values.min()
+        panel2_max = panel2_values.max()
+        panel2_range = max(abs(panel2_min), abs(panel2_max))
+        panel2_padding = panel2_range * 0.2  # 20% padding, simétrico
         
         # Panel 3: Efecto acumulado
-        panel3_min = min(cumulative_effect.min(), cumulative_lower.min())
-        panel3_max = max(cumulative_effect.max(), cumulative_upper.max())
-        panel3_padding = max(abs(panel3_min), abs(panel3_max)) * 0.15
+        panel3_values = cumulative_effect
+        panel3_min = panel3_values.min()
+        panel3_max = panel3_values.max()
+        panel3_range = max(abs(panel3_min), abs(panel3_max))
+        panel3_padding = panel3_range * 0.2  # 20% padding, simétrico
         
-        st.write(f"📊 Rangos calculados:")
-        st.write(f"  Panel 1: {panel1_min:.0f} a {panel1_max:.0f}")
+        st.write(f"📊 Rangos calculados (ajustados):")
+        st.write(f"  Panel 1: {panel1_min:.0f} a {panel1_max:.0f} (range: {panel1_range:.0f})")
         st.write(f"  Panel 2: {panel2_min:.0f} a {panel2_max:.0f}")
         st.write(f"  Panel 3: {panel3_min:.0f} a {panel3_max:.0f}")
         
@@ -321,7 +356,7 @@ class ImpactVisualizer:
         fig.update_xaxes(title_text="", showgrid=True, row=2, col=1)
         fig.update_xaxes(title_text="<b>Fecha</b>", showgrid=True, row=3, col=1)
         
-        # Actualizar ejes Y con RANGOS AJUSTADOS
+        # Actualizar ejes Y con RANGOS AJUSTADOS (sin ICs absurdos)
         fig.update_yaxes(
             title_text=f"<b>{metric_name}</b>", 
             showgrid=True, 
@@ -330,10 +365,11 @@ class ImpactVisualizer:
             col=1
         )
         
+        # Panel 2: Hacer simétrico alrededor de cero
         fig.update_yaxes(
             title_text="<b>Diferencia</b>", 
             showgrid=True,
-            range=[panel2_min - panel2_padding, panel2_max + panel2_padding],
+            range=[-(panel2_range + panel2_padding), (panel2_range + panel2_padding)],
             zeroline=True,
             zerolinewidth=2,
             zerolinecolor='gray',
@@ -341,10 +377,11 @@ class ImpactVisualizer:
             col=1
         )
         
+        # Panel 3: Hacer simétrico alrededor de cero
         fig.update_yaxes(
             title_text="<b>Acumulado</b>", 
             showgrid=True,
-            range=[panel3_min - panel3_padding, panel3_max + panel3_padding],
+            range=[-(panel3_range + panel3_padding), (panel3_range + panel3_padding)],
             zeroline=True,
             zerolinewidth=2,
             zerolinecolor='gray',
