@@ -97,17 +97,33 @@ if 'test_data' in st.session_state:
             x=df['date'],
             y=df['sessions'],
             mode='lines',
-            name='Sesiones'
+            name='Sesiones',
+            line=dict(color='blue', width=2)
         ))
         
-        # Convertir intervention a datetime de Python para Plotly
-        intervention_dt = intervention.to_pydatetime()
+        # Usar add_shape en lugar de add_vline (más compatible)
+        fig.add_shape(
+            type="line",
+            x0=intervention,
+            x1=intervention,
+            y0=0,
+            y1=1,
+            yref="paper",
+            line=dict(color="red", width=2, dash="dash")
+        )
         
-        fig.add_vline(
-            x=intervention_dt,
-            line_dash="dash",
-            line_color="red",
-            annotation_text="Intervención"
+        fig.add_annotation(
+            x=intervention,
+            y=1.05,
+            yref="paper",
+            text="Intervención",
+            showarrow=False,
+            font=dict(color="red", size=12)
+        )
+        
+        fig.update_layout(
+            hovermode='x unified',
+            template='plotly_white'
         )
         
         st.plotly_chart(fig, use_container_width=True)
