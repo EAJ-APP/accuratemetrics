@@ -42,6 +42,12 @@ except ImportError as e:
     MISSING_DEPS.append(f"ga4_advanced_extractor: {e}")
 
 try:
+    from src.data.ga4_properties import GA4PropertyManager
+except ImportError as e:
+    IMPORTS_OK = False
+    MISSING_DEPS.append(f"ga4_properties: {e}")
+
+try:
     from src.analysis.causal_impact_advanced import CausalImpactAdvancedAnalyzer
 except ImportError as e:
     IMPORTS_OK = False
@@ -87,6 +93,15 @@ if 'comparison_df' not in st.session_state:
     st.session_state.comparison_df = None
 if 'analyzer' not in st.session_state:
     st.session_state.analyzer = None
+# Session state para propiedades GA4 avanzado
+if 'adv_ga4_properties' not in st.session_state:
+    st.session_state.adv_ga4_properties = None
+if 'adv_properties_loaded' not in st.session_state:
+    st.session_state.adv_properties_loaded = False
+if 'adv_selected_property_id' not in st.session_state:
+    st.session_state.adv_selected_property_id = None
+if 'adv_available_filters' not in st.session_state:
+    st.session_state.adv_available_filters = None
 
 # ============================================================================
 # TÍTULO Y DESCRIPCIÓN
@@ -113,8 +128,11 @@ with st.sidebar:
         if 'user_info' in st.session_state and st.session_state.user_info:
             st.write(f"**Usuario:** {st.session_state.user_info.get('email', 'N/A')}")
 
-        if 'property_id' in st.session_state and st.session_state.property_id:
-            st.write(f"**Propiedad:** {st.session_state.property_id}")
+        # Mostrar propiedad seleccionada en este módulo
+        if st.session_state.adv_selected_property_id:
+            st.write(f"**Propiedad:** `{st.session_state.adv_selected_property_id}`")
+        elif 'property_id' in st.session_state and st.session_state.property_id:
+            st.write(f"**Propiedad (principal):** `{st.session_state.property_id}`")
     else:
         st.warning("No autenticado")
         st.info("Ve a la página principal para autenticarte con Google.")
@@ -131,6 +149,17 @@ with st.sidebar:
 
     if use_demo_data:
         st.info("Los datos de ejemplo incluyen intervenciones simuladas.")
+
+    # Información de datos cargados
+    if st.session_state.advanced_ga4_data is not None:
+        st.markdown("---")
+        st.header("📊 Datos Cargados")
+        df_info = st.session_state.advanced_ga4_data
+        st.write(f"**Días:** {len(df_info)}")
+        st.write(f"**Métricas:** {len(df_info.columns)}")
+        if 'date' in df_info.columns:
+            st.write(f"**Desde:** {df_info['date'].min().strftime('%Y-%m-%d')}")
+            st.write(f"**Hasta:** {df_info['date'].max().strftime('%Y-%m-%d')}")
 
 # ============================================================================
 # VERIFICAR AUTENTICACIÓN O MODO DEMO
@@ -194,7 +223,100 @@ if use_demo_data:
 
 else:
     # Extracción real de GA4
+
+    # ==========================================
+    # SELECTOR DE PROPIEDAD GA4
+    # ==========================================
+    with st.expander("🎯 Selección de Propiedad GA4", expanded=True):
+
+        # Verificar credenciales
+        if 'credentials' not in st.session_state or not st.session_state.credentials:
+            st.error("No hay credenciales disponibles. Por favor, autentícate primero en la página principal.")
+            st.stop()
+
+        # Cargar propiedades si no están cargadas
+        if not st.session_state.adv_properties_loaded:
+            with st.spinner("🔄 Cargando tus propiedades de Google Analytics..."):
+                try:
+                    property_manager = GA4PropertyManager(st.session_state.credentials)
+                    properties_dict = property_manager.get_properties_dict()
+
+                    if properties_dict:
+                        st.session_state.adv_ga4_properties = properties_dict
+                        st.session_state.adv_properties_loaded = True
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ No se encontraron propiedades de GA4 en tu cuenta")
+                        st.info("Verifica que tengas acceso a al menos una propiedad de Google Analytics 4")
+
+                except Exception as e:
+                    st.error(f"Error al cargar propiedades: {str(e)}")
+                    st.info("💡 Intenta cerrar sesión y volver a autenticarte")
+
+        # Mostrar selector de propiedades
+        if st.session_state.adv_properties_loaded and st.session_state.adv_ga4_properties:
+            col_prop1, col_prop2 = st.columns([3, 1])
+
+            with col_prop1:
+                # Selector de propiedades
+                selected_property_name = st.selectbox(
+                    "📊 Selecciona una Propiedad de GA4:",
+                    options=list(st.session_state.adv_ga4_properties.keys()),
+                    help="Selecciona la propiedad que quieres analizar",
+                    key="adv_property_selector"
+                )
+
+                # Obtener el ID de la propiedad seleccionada
+                selected_property_id = st.session_state.adv_ga4_properties[selected_property_name]
+                st.session_state.adv_selected_property_id = selected_property_id
+
+                # Mostrar el ID para referencia
+                st.caption(f"**Property ID:** `{selected_property_id}`")
+
+            with col_prop2:
+                st.markdown("####")
+                if st.button("🔄 Recargar", use_container_width=True, help="Recargar lista de propiedades"):
+                    st.session_state.adv_properties_loaded = False
+                    st.session_state.adv_ga4_properties = None
+                    st.session_state.adv_available_filters = None
+                    st.rerun()
+
+            # Mostrar información de la propiedad seleccionada
+            st.success(f"✓ Propiedad seleccionada: **{selected_property_name}**")
+
+        else:
+            # Fallback: Input manual si no se pudieron cargar propiedades
+            st.warning("⚠️ No se pudieron cargar las propiedades automáticamente")
+
+            col_manual1, col_manual2 = st.columns([3, 1])
+
+            with col_manual1:
+                manual_property_id = st.text_input(
+                    "Property ID de GA4 (manual):",
+                    value=st.session_state.adv_selected_property_id or "",
+                    placeholder="123456789",
+                    help="Encuentra tu Property ID en Admin > Property Settings de Google Analytics"
+                )
+
+                if manual_property_id:
+                    st.session_state.adv_selected_property_id = manual_property_id
+
+            with col_manual2:
+                st.markdown("####")
+                if st.button("🔄 Reintentar", use_container_width=True):
+                    st.session_state.adv_properties_loaded = False
+                    st.rerun()
+
+    # ==========================================
+    # CONFIGURACIÓN DE EXTRACCIÓN
+    # ==========================================
     with st.expander("⚙️ Configuración de extracción", expanded=True):
+
+        # Verificar que hay propiedad seleccionada
+        if not st.session_state.adv_selected_property_id:
+            st.warning("⚠️ Selecciona una propiedad GA4 primero")
+            st.stop()
+
         col1, col2 = st.columns(2)
 
         with col1:
@@ -222,43 +344,77 @@ else:
         with col2:
             st.subheader("🔍 Filtros (Opcional)")
 
-            # Los filtros se cargarán dinámicamente si hay conexión
+            # Cargar filtros disponibles dinámicamente si no están cargados
+            if st.session_state.adv_available_filters is None and st.session_state.adv_selected_property_id:
+                try:
+                    with st.spinner("Cargando filtros disponibles..."):
+                        extractor = GA4AdvancedExtractor(st.session_state.credentials)
+                        filters = extractor.get_available_filters(
+                            property_id=st.session_state.adv_selected_property_id,
+                            start_date=(datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'),
+                            end_date=(datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+                        )
+                        st.session_state.adv_available_filters = filters
+                except Exception as e:
+                    st.warning(f"No se pudieron cargar filtros dinámicos: {e}")
+                    st.session_state.adv_available_filters = {
+                        'canales': ['Todos', 'Organic Search', 'Direct', 'Paid Search', 'Display', 'Social'],
+                        'dispositivos': ['Todos', 'desktop', 'mobile', 'tablet'],
+                        'paises': ['Todos'],
+                        'ciudades': ['Todos']
+                    }
+
+            # Usar filtros dinámicos o defaults
+            filters = st.session_state.adv_available_filters or {
+                'canales': ['Todos', 'Organic Search', 'Direct', 'Paid Search', 'Display', 'Social'],
+                'dispositivos': ['Todos', 'desktop', 'mobile', 'tablet'],
+                'paises': ['Todos'],
+                'ciudades': ['Todos']
+            }
+
             channel_filter = st.selectbox(
                 "Canal:",
-                options=['Todos', 'Organic Search', 'Direct', 'Paid Search', 'Display', 'Social'],
+                options=filters.get('canales', ['Todos']),
                 help="Filtrar por canal de adquisición"
             )
 
             device_filter = st.selectbox(
                 "Dispositivo:",
-                options=['Todos', 'desktop', 'mobile', 'tablet'],
+                options=filters.get('dispositivos', ['Todos']),
                 help="Filtrar por tipo de dispositivo"
             )
 
-            country_filter = st.text_input(
-                "País (opcional):",
-                placeholder="Ej: Spain",
-                help="Dejar vacío para todos los países"
+            country_filter = st.selectbox(
+                "País:",
+                options=filters.get('paises', ['Todos']),
+                help="Filtrar por país"
+            )
+
+            city_filter = st.selectbox(
+                "Ciudad:",
+                options=filters.get('ciudades', ['Todos']),
+                help="Filtrar por ciudad"
             )
 
         # Botón de extracción
         if st.button("📥 Extraer Datos de GA4", type="primary", use_container_width=True):
             if 'credentials' not in st.session_state or not st.session_state.credentials:
                 st.error("No hay credenciales disponibles. Autentícate primero.")
-            elif 'property_id' not in st.session_state or not st.session_state.property_id:
-                st.error("No hay propiedad seleccionada. Ve a la página principal.")
+            elif not st.session_state.adv_selected_property_id:
+                st.error("No hay propiedad seleccionada. Selecciona una propiedad arriba.")
             else:
                 with st.spinner("Extrayendo datos de GA4..."):
                     try:
                         extractor = GA4AdvancedExtractor(st.session_state.credentials)
 
                         df = extractor.get_advanced_metrics(
-                            property_id=st.session_state.property_id,
+                            property_id=st.session_state.adv_selected_property_id,
                             start_date=start_date.strftime('%Y-%m-%d'),
                             end_date=end_date.strftime('%Y-%m-%d'),
                             channel_filter=channel_filter if channel_filter != 'Todos' else None,
                             device_filter=device_filter if device_filter != 'Todos' else None,
-                            country_filter=country_filter if country_filter else None,
+                            country_filter=country_filter if country_filter != 'Todos' else None,
+                            city_filter=city_filter if city_filter != 'Todos' else None,
                             include_channel_breakdown=True
                         )
 
