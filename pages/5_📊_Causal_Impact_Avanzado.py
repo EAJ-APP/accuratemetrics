@@ -625,6 +625,45 @@ if st.session_state.advanced_ga4_data is not None:
             key='int1_name'
         )
 
+        # Tipo de intervención 1
+        int1_type = st.radio(
+            "Tipo de intervención:",
+            options=['puntual', 'prolongada'],
+            index=0,
+            horizontal=True,
+            key='int1_type',
+            help="**Puntual:** Acción de un día con efecto permanente. **Prolongada:** Campaña con duración definida."
+        )
+
+        # Fecha fin para intervención prolongada
+        int1_end_date = None
+        int1_analyze_residual = False
+
+        if int1_type == 'prolongada':
+            default_end_1 = intervention_1 + timedelta(days=30)
+            if default_end_1 > max_date.date() if hasattr(max_date, 'date') else max_date:
+                default_end_1 = max_date.date() if hasattr(max_date, 'date') else max_date - timedelta(days=1)
+
+            int1_end_date = st.date_input(
+                "Fecha fin de campaña:",
+                value=default_end_1,
+                min_value=intervention_1 + timedelta(days=1),
+                max_value=max_date - timedelta(days=1) if hasattr(max_date, 'date') else max_date - timedelta(days=1),
+                key='int1_end_date',
+                help="Fecha en que termina la campaña/intervención"
+            )
+
+            int1_analyze_residual = st.checkbox(
+                "Analizar efecto residual (post-campaña)",
+                value=True,
+                key='int1_residual',
+                help="Analiza si el efecto persiste después de que termine la campaña"
+            )
+
+            # Mostrar duración de campaña
+            campaign_days = (int1_end_date - intervention_1).days
+            st.caption(f"📅 Duración de campaña: **{campaign_days} días**")
+
         st.markdown("---")
 
         # Intervención 2 (opcional)
@@ -636,6 +675,9 @@ if st.session_state.advanced_ga4_data is not None:
 
         intervention_2 = None
         int2_name = None
+        int2_type = 'puntual'
+        int2_end_date = None
+        int2_analyze_residual = False
 
         if use_intervention_2:
             st.markdown("**Intervención 2** (opcional)")
@@ -658,6 +700,40 @@ if st.session_state.advanced_ga4_data is not None:
                 value="Intervención 2",
                 key='int2_name'
             )
+
+            # Tipo de intervención 2
+            int2_type = st.radio(
+                "Tipo de intervención:",
+                options=['puntual', 'prolongada'],
+                index=0,
+                horizontal=True,
+                key='int2_type',
+                help="**Puntual:** Acción de un día con efecto permanente. **Prolongada:** Campaña con duración definida."
+            )
+
+            if int2_type == 'prolongada':
+                default_end_2 = intervention_2 + timedelta(days=30)
+                if default_end_2 > max_date.date() if hasattr(max_date, 'date') else max_date:
+                    default_end_2 = max_date.date() if hasattr(max_date, 'date') else max_date - timedelta(days=1)
+
+                int2_end_date = st.date_input(
+                    "Fecha fin de campaña:",
+                    value=default_end_2,
+                    min_value=intervention_2 + timedelta(days=1),
+                    max_value=max_date - timedelta(days=1) if hasattr(max_date, 'date') else max_date - timedelta(days=1),
+                    key='int2_end_date',
+                    help="Fecha en que termina la campaña/intervención"
+                )
+
+                int2_analyze_residual = st.checkbox(
+                    "Analizar efecto residual (post-campaña)",
+                    value=True,
+                    key='int2_residual',
+                    help="Analiza si el efecto persiste después de que termine la campaña"
+                )
+
+                campaign_days_2 = (int2_end_date - intervention_2).days
+                st.caption(f"📅 Duración de campaña: **{campaign_days_2} días**")
 
     # Validaciones
     st.markdown("---")
@@ -759,10 +835,19 @@ if st.session_state.advanced_ga4_data is not None:
             progress_bar = st.progress(0, text="Analizando intervención 1...")
 
             try:
-                result_1 = analyzer.analyze_intervention(
-                    intervention_date=intervention_1.strftime('%Y-%m-%d'),
-                    intervention_name=int1_name
-                )
+                # Preparar parámetros según tipo de intervención
+                int1_params = {
+                    'intervention_date': intervention_1.strftime('%Y-%m-%d'),
+                    'intervention_name': int1_name,
+                    'intervention_type': int1_type
+                }
+
+                # Añadir parámetros para intervención prolongada
+                if int1_type == 'prolongada' and int1_end_date:
+                    int1_params['intervention_end_date'] = int1_end_date.strftime('%Y-%m-%d')
+                    int1_params['analyze_residual'] = int1_analyze_residual
+
+                result_1 = analyzer.analyze_intervention(**int1_params)
 
                 st.session_state.ci_result_1 = result_1
                 progress_bar.progress(50, text="Intervención 1 completada")
@@ -779,10 +864,19 @@ if st.session_state.advanced_ga4_data is not None:
                 progress_bar.progress(50, text="Analizando intervención 2...")
 
                 try:
-                    result_2 = analyzer.analyze_intervention(
-                        intervention_date=intervention_2.strftime('%Y-%m-%d'),
-                        intervention_name=int2_name
-                    )
+                    # Preparar parámetros según tipo de intervención
+                    int2_params = {
+                        'intervention_date': intervention_2.strftime('%Y-%m-%d'),
+                        'intervention_name': int2_name,
+                        'intervention_type': int2_type
+                    }
+
+                    # Añadir parámetros para intervención prolongada
+                    if int2_type == 'prolongada' and int2_end_date:
+                        int2_params['intervention_end_date'] = int2_end_date.strftime('%Y-%m-%d')
+                        int2_params['analyze_residual'] = int2_analyze_residual
+
+                    result_2 = analyzer.analyze_intervention(**int2_params)
 
                     st.session_state.ci_result_2 = result_2
 
@@ -819,6 +913,19 @@ if st.session_state.advanced_ga4_data is not None:
             result_1 = st.session_state.ci_result_1
 
             st.subheader(f"Resultados: {result_1['nombre']}")
+
+            # Mostrar tipo de intervención
+            tipo_interv = result_1.get('tipo_intervencion', 'puntual')
+            if tipo_interv == 'prolongada':
+                campana = result_1.get('campana', {})
+                st.info(f"""
+                **📅 Intervención Prolongada (Campaña)**
+                - Inicio: {campana.get('fecha_inicio', 'N/A')}
+                - Fin: {campana.get('fecha_fin', 'N/A')}
+                - Duración: {campana.get('duracion_dias', 'N/A')} días
+                """)
+            else:
+                st.info(f"**📍 Intervención Puntual** - Fecha: {result_1['fecha']}")
 
             # Métricas principales
             col1, col2, col3, col4 = st.columns(4)
@@ -864,6 +971,62 @@ if st.session_state.advanced_ga4_data is not None:
 
             st.markdown(f"**Conclusión:** {interp['conclusion']}")
 
+            # ====== EFECTO RESIDUAL (solo para intervenciones prolongadas) ======
+            if tipo_interv == 'prolongada' and 'efecto_residual' in result_1:
+                residual = result_1['efecto_residual']
+                st.markdown("---")
+                st.subheader("🔄 Efecto Residual (Post-Campaña)")
+
+                if residual.get('disponible', False):
+                    st.info(f"""
+                    **Período analizado:** {residual.get('periodo_inicio', 'N/A')} a {residual.get('periodo_fin', 'N/A')} ({residual.get('dias', 0)} días después de la campaña)
+                    """)
+
+                    res_data = residual.get('resultados', {})
+                    res_metricas = res_data.get('metricas', {})
+                    res_stats = res_data.get('estadisticas', {})
+
+                    col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+
+                    with col_r1:
+                        st.metric(
+                            "Efecto Diario Residual",
+                            f"{res_metricas.get('efecto_diario', 0):+.1f}",
+                            delta=f"{res_metricas.get('cambio_porcentual', 0):+.1f}%"
+                        )
+
+                    with col_r2:
+                        st.metric(
+                            "Efecto Total Residual",
+                            f"{res_metricas.get('efecto_total', 0):+,.0f}"
+                        )
+
+                    with col_r3:
+                        sig_residual = "Sí ✅" if res_stats.get('es_significativo', False) else "No ❌"
+                        st.metric(
+                            "Significativo",
+                            sig_residual,
+                            delta=f"p={res_stats.get('p_value', 1):.4f}"
+                        )
+
+                    with col_r4:
+                        st.metric(
+                            "Cambio % Residual",
+                            f"{res_metricas.get('cambio_porcentual', 0):+.1f}%"
+                        )
+
+                    # Interpretación del efecto residual
+                    if res_stats.get('es_significativo', False):
+                        if res_metricas.get('efecto_diario', 0) > 0:
+                            st.success("✅ **El efecto persiste** después de la campaña")
+                        else:
+                            st.warning("⚠️ **Efecto negativo residual** detectado")
+                    else:
+                        st.info("ℹ️ **No hay efecto residual significativo** - El efecto desapareció al terminar la campaña")
+
+                else:
+                    st.warning(f"⚠️ {residual.get('mensaje', 'No se pudo analizar el efecto residual')}")
+
             # Gráfico
             st.markdown("---")
             st.subheader("📈 Gráficos de Causal Impact")
@@ -902,6 +1065,19 @@ if st.session_state.advanced_ga4_data is not None:
                 result_2 = st.session_state.ci_result_2
 
                 st.subheader(f"Resultados: {result_2['nombre']}")
+
+                # Mostrar tipo de intervención
+                tipo_interv_2 = result_2.get('tipo_intervencion', 'puntual')
+                if tipo_interv_2 == 'prolongada':
+                    campana_2 = result_2.get('campana', {})
+                    st.info(f"""
+                    **📅 Intervención Prolongada (Campaña)**
+                    - Inicio: {campana_2.get('fecha_inicio', 'N/A')}
+                    - Fin: {campana_2.get('fecha_fin', 'N/A')}
+                    - Duración: {campana_2.get('duracion_dias', 'N/A')} días
+                    """)
+                else:
+                    st.info(f"**📍 Intervención Puntual** - Fecha: {result_2['fecha']}")
 
                 # Métricas principales
                 col1, col2, col3, col4 = st.columns(4)
@@ -946,6 +1122,62 @@ if st.session_state.advanced_ga4_data is not None:
                     st.info(f"**{interp['significancia']}**")
 
                 st.markdown(f"**Conclusión:** {interp['conclusion']}")
+
+                # ====== EFECTO RESIDUAL (solo para intervenciones prolongadas) ======
+                if tipo_interv_2 == 'prolongada' and 'efecto_residual' in result_2:
+                    residual_2 = result_2['efecto_residual']
+                    st.markdown("---")
+                    st.subheader("🔄 Efecto Residual (Post-Campaña)")
+
+                    if residual_2.get('disponible', False):
+                        st.info(f"""
+                        **Período analizado:** {residual_2.get('periodo_inicio', 'N/A')} a {residual_2.get('periodo_fin', 'N/A')} ({residual_2.get('dias', 0)} días después de la campaña)
+                        """)
+
+                        res_data_2 = residual_2.get('resultados', {})
+                        res_metricas_2 = res_data_2.get('metricas', {})
+                        res_stats_2 = res_data_2.get('estadisticas', {})
+
+                        col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+
+                        with col_r1:
+                            st.metric(
+                                "Efecto Diario Residual",
+                                f"{res_metricas_2.get('efecto_diario', 0):+.1f}",
+                                delta=f"{res_metricas_2.get('cambio_porcentual', 0):+.1f}%"
+                            )
+
+                        with col_r2:
+                            st.metric(
+                                "Efecto Total Residual",
+                                f"{res_metricas_2.get('efecto_total', 0):+,.0f}"
+                            )
+
+                        with col_r3:
+                            sig_residual_2 = "Sí ✅" if res_stats_2.get('es_significativo', False) else "No ❌"
+                            st.metric(
+                                "Significativo",
+                                sig_residual_2,
+                                delta=f"p={res_stats_2.get('p_value', 1):.4f}"
+                            )
+
+                        with col_r4:
+                            st.metric(
+                                "Cambio % Residual",
+                                f"{res_metricas_2.get('cambio_porcentual', 0):+.1f}%"
+                            )
+
+                        # Interpretación del efecto residual
+                        if res_stats_2.get('es_significativo', False):
+                            if res_metricas_2.get('efecto_diario', 0) > 0:
+                                st.success("✅ **El efecto persiste** después de la campaña")
+                            else:
+                                st.warning("⚠️ **Efecto negativo residual** detectado")
+                        else:
+                            st.info("ℹ️ **No hay efecto residual significativo** - El efecto desapareció al terminar la campaña")
+
+                    else:
+                        st.warning(f"⚠️ {residual_2.get('mensaje', 'No se pudo analizar el efecto residual')}")
 
                 # Gráfico
                 st.markdown("---")
