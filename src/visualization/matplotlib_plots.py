@@ -726,8 +726,8 @@ def plot_monetary_impact(
     ax2.text(0.5, 0.85, 'IMPACTO MONETARIO', ha='center', va='center',
             transform=ax2.transAxes, fontsize=16, fontweight='bold')
 
-    # Línea separadora
-    ax2.axhline(y=0.75, xmin=0.15, xmax=0.85, color='black', linewidth=1, transform=ax2.transAxes)
+    # Línea separadora (usando plot en lugar de axhline para soporte de transform)
+    ax2.plot([0.15, 0.85], [0.75, 0.75], color='black', linewidth=1, transform=ax2.transAxes)
 
     # Conversiones extra
     emoji_conv = "▲" if efecto_conversiones > 0 else "▼" if efecto_conversiones < 0 else "="
@@ -742,9 +742,9 @@ def plot_monetary_impact(
             ha='center', va='center', transform=ax2.transAxes,
             fontsize=14, color='gray')
 
-    # Línea separadora
-    ax2.axhline(y=0.38, xmin=0.15, xmax=0.85, color='gray', linewidth=1,
-                linestyle='--', transform=ax2.transAxes)
+    # Línea separadora (usando plot en lugar de axhline para soporte de transform)
+    ax2.plot([0.15, 0.85], [0.38, 0.38], color='gray', linewidth=1,
+             linestyle='--', transform=ax2.transAxes)
 
     # Impacto monetario total
     emoji_money = "💰" if impacto_monetario > 0 else "📉" if impacto_monetario < 0 else "➖"
