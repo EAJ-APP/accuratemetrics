@@ -171,7 +171,7 @@ class GA4AdvancedExtractor:
                         field_name=self.CHANNEL_DIMENSION,
                         string_filter=Filter.StringFilter(
                             value=channel_filter,
-                            match_type=Filter.StringFilter.MatchType.EXACT
+                            match_type=Filter.StringFilter.MatchType.CONTAINS
                         )
                     )
                 )

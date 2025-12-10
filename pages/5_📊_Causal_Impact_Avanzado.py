@@ -578,10 +578,11 @@ if st.session_state.advanced_ga4_data is not None:
         available_controls = [c for c in df.select_dtypes(include=[np.number]).columns
                              if c not in ['date', response_variable]]
 
-        # Variables de control predeterminadas
+        # Variables de control predeterminadas (en orden de preferencia)
         preferred_controls = [
             'sesiones_totales',
             'conversiones',
+            'usuarios_unicos',
             'trafico_directo',
             'trafico_pago',
             'trafico_organico'
@@ -589,6 +590,10 @@ if st.session_state.advanced_ga4_data is not None:
         # Filtrar las que existen y no son la variable respuesta
         default_controls = [c for c in preferred_controls
                           if c in available_controls and c != response_variable]
+
+        # Si no hay ninguna preferida disponible, usar las primeras 3 disponibles
+        if not default_controls and available_controls:
+            default_controls = available_controls[:3]
 
         control_variables = st.multiselect(
             "Variables de control:",
@@ -1320,12 +1325,15 @@ if st.session_state.advanced_ga4_data is not None:
                     }
 
                     int2_data = None
-                    if result_2:
+                    if result_2 is not None and isinstance(result_2, dict) and 'fecha' in result_2:
                         int2_data = {
                             'fecha': result_2['fecha'],
                             'nombre': result_2['nombre'],
                             'fecha_fin': result_2.get('campana', {}).get('fecha_fin', result_2['fecha'])
                         }
+                        st.caption(f"📍 Intervención 1: {int1_data['nombre']} | 📍 Intervención 2: {int2_data['nombre']}")
+                    else:
+                        st.caption(f"📍 Intervención: {int1_data['nombre']}")
 
                     fig_timeline = plot_dual_intervention_timeline(
                         data=df,
@@ -1338,6 +1346,9 @@ if st.session_state.advanced_ga4_data is not None:
 
                 except Exception as e:
                     st.error(f"Error generando gráfico timeline: {e}")
+                    import traceback
+                    with st.expander("Ver detalles del error"):
+                        st.code(traceback.format_exc())
 
                 # Gráfico de comparación barras
                 st.markdown("---")
