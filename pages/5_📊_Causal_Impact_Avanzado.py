@@ -60,6 +60,8 @@ try:
         plot_causal_impact_custom,
         plot_intervention_comparison,
         plot_recommended_variables,
+        plot_dual_intervention_timeline,
+        plot_monetary_impact,
         fig_to_bytes
     )
 except ImportError as e:
@@ -564,10 +566,10 @@ if st.session_state.advanced_ga4_data is not None:
     with col_config1:
         st.subheader("📊 Variables")
 
-        # Variable respuesta
+        # Variable respuesta (por defecto: Sesiones)
         response_variable = st.selectbox(
             "Variable respuesta:",
-            options=['conversiones', 'sesiones_totales', 'usuarios_unicos'],
+            options=['sesiones_totales', 'conversiones', 'usuarios_unicos'],
             index=0,
             help="La métrica que quieres analizar"
         )
@@ -576,11 +578,17 @@ if st.session_state.advanced_ga4_data is not None:
         available_controls = [c for c in df.select_dtypes(include=[np.number]).columns
                              if c not in ['date', response_variable]]
 
-        # Preseleccionar recomendadas
-        default_controls = []
-        if response_variable in df.columns:
-            corr = df.select_dtypes(include=[np.number]).corr()[response_variable]
-            default_controls = [c for c in available_controls if abs(corr.get(c, 0)) >= 0.5][:3]
+        # Variables de control predeterminadas
+        preferred_controls = [
+            'sesiones_totales',
+            'conversiones',
+            'trafico_directo',
+            'trafico_pago',
+            'trafico_organico'
+        ]
+        # Filtrar las que existen y no son la variable respuesta
+        default_controls = [c for c in preferred_controls
+                          if c in available_controls and c != response_variable]
 
         control_variables = st.multiselect(
             "Variables de control:",
@@ -1059,6 +1067,51 @@ if st.session_state.advanced_ga4_data is not None:
             except Exception as e:
                 st.error(f"Error generando gráfico: {e}")
 
+            # ====== IMPACTO MONETARIO ======
+            st.markdown("---")
+            st.subheader("💰 Impacto Monetario")
+
+            try:
+                # Obtener datos de ingresos
+                if 'ingresos' in df.columns and 'compras' in df.columns:
+                    ingresos_totales = df['ingresos'].sum()
+                    compras_totales = df['compras'].sum()
+                else:
+                    # Estimar si no hay datos reales
+                    ingresos_totales = df.get('ingresos', pd.Series([0])).sum()
+                    compras_totales = df.get('compras', pd.Series([1])).sum()
+                    if compras_totales == 0:
+                        compras_totales = 1
+
+                # Datos del efecto
+                efecto_total = result_1['metricas']['efecto_total']
+
+                # Calcular conversiones con y sin impacto
+                # Efecto total = real - predicho, entonces predicho = real - efecto
+                summary_data = result_1.get('summary_data', {})
+                if 'cumulative' in summary_data:
+                    conversiones_con_impacto = summary_data['cumulative'].get('actual', efecto_total * 2)
+                    conversiones_sin_impacto = conversiones_con_impacto - efecto_total
+                else:
+                    # Estimar basado en efecto total
+                    conversiones_sin_impacto = max(100, abs(efecto_total) * 5)
+                    conversiones_con_impacto = conversiones_sin_impacto + efecto_total
+
+                fig_monetary = plot_monetary_impact(
+                    efecto_conversiones=efecto_total,
+                    conversiones_sin_impacto=conversiones_sin_impacto,
+                    conversiones_con_impacto=conversiones_con_impacto,
+                    ingresos_totales=ingresos_totales,
+                    compras_totales=compras_totales,
+                    nombre_intervencion=result_1['nombre']
+                )
+                st.pyplot(fig_monetary, use_container_width=True)
+                plt.close(fig_monetary)
+
+            except Exception as e:
+                st.warning(f"No se pudo generar el gráfico de impacto monetario: {e}")
+                st.info("Asegúrate de que los datos incluyen métricas de ingresos y compras")
+
         # ====== TAB RESULTADO 2 ======
         with result_tabs[1]:
             if st.session_state.ci_result_2:
@@ -1198,6 +1251,46 @@ if st.session_state.advanced_ga4_data is not None:
 
                 except Exception as e:
                     st.error(f"Error generando gráfico: {e}")
+
+                # ====== IMPACTO MONETARIO ======
+                st.markdown("---")
+                st.subheader("💰 Impacto Monetario")
+
+                try:
+                    # Obtener datos de ingresos
+                    if 'ingresos' in df.columns and 'compras' in df.columns:
+                        ingresos_totales = df['ingresos'].sum()
+                        compras_totales = df['compras'].sum()
+                    else:
+                        ingresos_totales = df.get('ingresos', pd.Series([0])).sum()
+                        compras_totales = df.get('compras', pd.Series([1])).sum()
+                        if compras_totales == 0:
+                            compras_totales = 1
+
+                    efecto_total_2 = result_2['metricas']['efecto_total']
+
+                    summary_data_2 = result_2.get('summary_data', {})
+                    if 'cumulative' in summary_data_2:
+                        conversiones_con_impacto_2 = summary_data_2['cumulative'].get('actual', efecto_total_2 * 2)
+                        conversiones_sin_impacto_2 = conversiones_con_impacto_2 - efecto_total_2
+                    else:
+                        conversiones_sin_impacto_2 = max(100, abs(efecto_total_2) * 5)
+                        conversiones_con_impacto_2 = conversiones_sin_impacto_2 + efecto_total_2
+
+                    fig_monetary_2 = plot_monetary_impact(
+                        efecto_conversiones=efecto_total_2,
+                        conversiones_sin_impacto=conversiones_sin_impacto_2,
+                        conversiones_con_impacto=conversiones_con_impacto_2,
+                        ingresos_totales=ingresos_totales,
+                        compras_totales=compras_totales,
+                        nombre_intervencion=result_2['nombre']
+                    )
+                    st.pyplot(fig_monetary_2, use_container_width=True)
+                    plt.close(fig_monetary_2)
+
+                except Exception as e:
+                    st.warning(f"No se pudo generar el gráfico de impacto monetario: {e}")
+
             else:
                 st.info("No se configuró una segunda intervención")
 
@@ -1211,8 +1304,44 @@ if st.session_state.advanced_ga4_data is not None:
                 # Tabla comparativa
                 st.dataframe(comparison_df, use_container_width=True, hide_index=True)
 
-                # Gráfico de comparación
+                # Gráfico timeline con ambas intervenciones
                 st.markdown("---")
+                st.subheader("📈 Serie Temporal con Intervenciones")
+
+                try:
+                    result_1 = st.session_state.ci_result_1
+                    result_2 = st.session_state.ci_result_2
+
+                    # Preparar datos de intervenciones
+                    int1_data = {
+                        'fecha': result_1['fecha'],
+                        'nombre': result_1['nombre'],
+                        'fecha_fin': result_1.get('campana', {}).get('fecha_fin', result_1['fecha'])
+                    }
+
+                    int2_data = None
+                    if result_2:
+                        int2_data = {
+                            'fecha': result_2['fecha'],
+                            'nombre': result_2['nombre'],
+                            'fecha_fin': result_2.get('campana', {}).get('fecha_fin', result_2['fecha'])
+                        }
+
+                    fig_timeline = plot_dual_intervention_timeline(
+                        data=df,
+                        intervention_1=int1_data,
+                        intervention_2=int2_data,
+                        response_variable=response_variable
+                    )
+                    st.pyplot(fig_timeline, use_container_width=True)
+                    plt.close(fig_timeline)
+
+                except Exception as e:
+                    st.error(f"Error generando gráfico timeline: {e}")
+
+                # Gráfico de comparación barras
+                st.markdown("---")
+                st.subheader("📊 Comparación de Efectos")
 
                 try:
                     fig_comp = plot_intervention_comparison(comparison_df)

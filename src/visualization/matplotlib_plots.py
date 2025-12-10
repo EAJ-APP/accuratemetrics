@@ -574,6 +574,197 @@ CONCLUSIÓN
     return fig
 
 
+def plot_dual_intervention_timeline(
+    data: pd.DataFrame,
+    intervention_1: Dict[str, Any],
+    intervention_2: Optional[Dict[str, Any]] = None,
+    response_variable: str = 'conversiones',
+    figsize: Tuple[int, int] = (16, 8)
+) -> plt.Figure:
+    """
+    Crear gráfico timeline con dos intervenciones marcadas
+
+    Args:
+        data: DataFrame con los datos
+        intervention_1: Dict con 'fecha', 'nombre', 'fecha_fin' (opcional)
+        intervention_2: Dict con 'fecha', 'nombre', 'fecha_fin' (opcional)
+        response_variable: Variable a mostrar
+        figsize: Tamaño de la figura
+
+    Returns:
+        Figura de matplotlib
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Asegurar índice de fecha
+    if 'date' in data.columns:
+        plot_data = data.set_index('date')
+    else:
+        plot_data = data.copy()
+
+    # Graficar serie temporal
+    ax.plot(plot_data.index, plot_data[response_variable],
+            linewidth=2, color=COLORS['primary'],
+            label=response_variable.replace('_', ' ').title())
+
+    # Intervención 1
+    int1_start = pd.Timestamp(intervention_1['fecha'])
+    int1_end = pd.Timestamp(intervention_1.get('fecha_fin', intervention_1['fecha']))
+
+    if int1_start == int1_end:
+        # Intervención puntual
+        ax.axvline(int1_start, color=COLORS['intervention_1'], linestyle='--',
+                   linewidth=2.5, alpha=0.9, label=f"{intervention_1['nombre']} (puntual)")
+    else:
+        # Intervención prolongada
+        ax.axvspan(int1_start, int1_end, alpha=0.25, color=COLORS['intervention_1'],
+                   label=f"{intervention_1['nombre']} ({(int1_end - int1_start).days} días)")
+        ax.axvline(int1_start, color=COLORS['intervention_1'], linestyle='--', linewidth=1.5, alpha=0.7)
+        ax.axvline(int1_end, color=COLORS['intervention_1'], linestyle='--', linewidth=1.5, alpha=0.7)
+
+    # Intervención 2 (si existe)
+    if intervention_2:
+        int2_start = pd.Timestamp(intervention_2['fecha'])
+        int2_end = pd.Timestamp(intervention_2.get('fecha_fin', intervention_2['fecha']))
+
+        if int2_start == int2_end:
+            ax.axvline(int2_start, color=COLORS['intervention_2'], linestyle='--',
+                       linewidth=2.5, alpha=0.9, label=f"{intervention_2['nombre']} (puntual)")
+        else:
+            ax.axvspan(int2_start, int2_end, alpha=0.25, color=COLORS['intervention_2'],
+                       label=f"{intervention_2['nombre']} ({(int2_end - int2_start).days} días)")
+            ax.axvline(int2_start, color=COLORS['intervention_2'], linestyle='--', linewidth=1.5, alpha=0.7)
+            ax.axvline(int2_end, color=COLORS['intervention_2'], linestyle='--', linewidth=1.5, alpha=0.7)
+
+    # Configurar ejes
+    ax.set_xlabel('Fecha', fontsize=12, fontweight='bold')
+    ax.set_ylabel(response_variable.replace('_', ' ').title(), fontsize=12, fontweight='bold')
+    ax.set_title('Serie Temporal con Intervenciones', fontsize=14, fontweight='bold')
+    ax.legend(loc='upper left', fontsize=10)
+    ax.grid(True, alpha=0.3)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
+    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+    plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_monetary_impact(
+    efecto_conversiones: float,
+    conversiones_sin_impacto: float,
+    conversiones_con_impacto: float,
+    ingresos_totales: float,
+    compras_totales: float,
+    nombre_intervencion: str = "Intervención",
+    figsize: Tuple[int, int] = (14, 6)
+) -> plt.Figure:
+    """
+    Crear gráfico de impacto monetario
+
+    Args:
+        efecto_conversiones: Conversiones extra (puede ser negativo)
+        conversiones_sin_impacto: Conversiones esperadas sin la intervención
+        conversiones_con_impacto: Conversiones reales con la intervención
+        ingresos_totales: Ingresos totales del período
+        compras_totales: Número total de compras
+        nombre_intervencion: Nombre de la intervención
+        figsize: Tamaño de la figura
+
+    Returns:
+        Figura de matplotlib
+    """
+    fig, axes = plt.subplots(1, 2, figsize=figsize)
+
+    # Calcular ticket medio
+    ticket_medio = ingresos_totales / compras_totales if compras_totales > 0 else 0
+    impacto_monetario = efecto_conversiones * ticket_medio
+
+    # Panel 1: Comparación de conversiones
+    ax1 = axes[0]
+
+    categorias = ['Sin Intervención\n(Predicho)', 'Con Intervención\n(Real)']
+    valores = [conversiones_sin_impacto, conversiones_con_impacto]
+    colores = [COLORS['neutral'], COLORS['positive'] if efecto_conversiones > 0 else COLORS['negative']]
+
+    bars = ax1.bar(categorias, valores, color=colores, edgecolor='black', linewidth=2)
+
+    # Añadir valores en las barras
+    for bar, val in zip(bars, valores):
+        ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(valores)*0.02,
+                f'{val:,.0f}', ha='center', va='bottom', fontsize=14, fontweight='bold')
+
+    # Flecha y texto de diferencia
+    diff_color = COLORS['positive'] if efecto_conversiones > 0 else COLORS['negative']
+    diff_text = f"{efecto_conversiones:+,.0f} conversiones"
+
+    ax1.annotate('', xy=(1, conversiones_con_impacto), xytext=(0, conversiones_sin_impacto),
+                arrowprops=dict(arrowstyle='->', color=diff_color, lw=3))
+
+    mid_y = (conversiones_sin_impacto + conversiones_con_impacto) / 2
+    ax1.text(0.5, mid_y, diff_text, ha='center', va='center', fontsize=12,
+            fontweight='bold', color=diff_color,
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='white', edgecolor=diff_color, linewidth=2))
+
+    ax1.set_ylabel('Conversiones', fontsize=12, fontweight='bold')
+    ax1.set_title(f'Impacto en Conversiones\n{nombre_intervencion}', fontsize=13, fontweight='bold')
+    ax1.grid(True, alpha=0.3, axis='y')
+
+    # Panel 2: Impacto monetario
+    ax2 = axes[1]
+
+    # Crear visualización tipo "tarjeta"
+    ax2.axis('off')
+
+    # Fondo de tarjeta
+    bg_color = '#d4edda' if impacto_monetario > 0 else '#f8d7da' if impacto_monetario < 0 else '#f8f9fa'
+    rect = plt.Rectangle((0.05, 0.1), 0.9, 0.8, facecolor=bg_color,
+                          edgecolor='black', linewidth=3, transform=ax2.transAxes)
+    ax2.add_patch(rect)
+
+    # Título
+    ax2.text(0.5, 0.85, 'IMPACTO MONETARIO', ha='center', va='center',
+            transform=ax2.transAxes, fontsize=16, fontweight='bold')
+
+    # Línea separadora
+    ax2.axhline(y=0.75, xmin=0.15, xmax=0.85, color='black', linewidth=1, transform=ax2.transAxes)
+
+    # Conversiones extra
+    emoji_conv = "▲" if efecto_conversiones > 0 else "▼" if efecto_conversiones < 0 else "="
+    color_conv = COLORS['positive'] if efecto_conversiones > 0 else COLORS['negative'] if efecto_conversiones < 0 else COLORS['neutral']
+
+    ax2.text(0.5, 0.62, f'{emoji_conv} {efecto_conversiones:+,.0f} conversiones',
+            ha='center', va='center', transform=ax2.transAxes,
+            fontsize=18, fontweight='bold', color=color_conv)
+
+    # Ticket medio
+    ax2.text(0.5, 0.48, f'Ticket medio: {ticket_medio:,.2f}€',
+            ha='center', va='center', transform=ax2.transAxes,
+            fontsize=14, color='gray')
+
+    # Línea separadora
+    ax2.axhline(y=0.38, xmin=0.15, xmax=0.85, color='gray', linewidth=1,
+                linestyle='--', transform=ax2.transAxes)
+
+    # Impacto monetario total
+    emoji_money = "💰" if impacto_monetario > 0 else "📉" if impacto_monetario < 0 else "➖"
+    color_money = COLORS['positive'] if impacto_monetario > 0 else COLORS['negative'] if impacto_monetario < 0 else COLORS['neutral']
+
+    ax2.text(0.5, 0.25, f'{impacto_monetario:+,.2f}€',
+            ha='center', va='center', transform=ax2.transAxes,
+            fontsize=28, fontweight='bold', color=color_money)
+
+    ax2.text(0.5, 0.15, 'Impacto estimado en ingresos',
+            ha='center', va='center', transform=ax2.transAxes,
+            fontsize=11, color='gray', style='italic')
+
+    plt.suptitle(f'Análisis de Impacto Monetario - {nombre_intervencion}',
+                fontsize=14, fontweight='bold', y=1.02)
+    plt.tight_layout()
+
+    return fig
+
+
 def fig_to_bytes(fig: plt.Figure, format: str = 'png', dpi: int = 150) -> bytes:
     """
     Convertir figura de matplotlib a bytes para descarga

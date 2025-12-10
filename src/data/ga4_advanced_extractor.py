@@ -30,8 +30,14 @@ class GA4AdvancedExtractor:
         'engagedSessions': 'sesiones_engagement',
         'engagementRate': 'tasa_engagement',
         'averageSessionDuration': 'duracion_sesion_promedio',
-        'screenPageViews': 'paginas_vistas'
+        'screenPageViews': 'paginas_vistas',
+        'purchaseRevenue': 'ingresos',
+        'ecommercePurchases': 'compras',
+        'totalRevenue': 'ingresos_totales'
     }
+
+    # Dimensión de canal GA4 (Primer grupo de canales principal del usuario)
+    CHANNEL_DIMENSION = 'firstUserDefaultChannelGroup'
 
     # Canales para clasificar tráfico
     ORGANIC_CHANNELS = ['Organic Search', 'Organic Social', 'Organic Video']
@@ -91,7 +97,7 @@ class GA4AdvancedExtractor:
 
         property_id = self._format_property_id(property_id)
 
-        # Métricas a extraer
+        # Métricas a extraer (incluyendo ingresos para impacto monetario)
         metrics_to_extract = [
             'sessions',
             'activeUsers',
@@ -99,7 +105,9 @@ class GA4AdvancedExtractor:
             'bounceRate',
             'screenPageViewsPerSession',
             'newUsers',
-            'engagedSessions'
+            'engagedSessions',
+            'purchaseRevenue',
+            'ecommercePurchases'
         ]
 
         # Construir métricas
@@ -160,7 +168,7 @@ class GA4AdvancedExtractor:
             filter_expressions.append(
                 FilterExpression(
                     filter=Filter(
-                        field_name='sessionDefaultChannelGroup',
+                        field_name=self.CHANNEL_DIMENSION,
                         string_filter=Filter.StringFilter(
                             value=channel_filter,
                             match_type=Filter.StringFilter.MatchType.EXACT
@@ -277,12 +285,12 @@ class GA4AdvancedExtractor:
             DateRange, Dimension, Metric, RunReportRequest
         )
 
-        # Request con dimensión de canal
+        # Request con dimensión de canal (firstUserDefaultChannelGroup)
         request = RunReportRequest(
             property=property_id,
             dimensions=[
                 Dimension(name='date'),
-                Dimension(name='sessionDefaultChannelGroup')
+                Dimension(name=self.CHANNEL_DIMENSION)
             ],
             metrics=[Metric(name='sessions')],
             date_ranges=[DateRange(start_date=start_date, end_date=end_date)],
@@ -362,7 +370,7 @@ class GA4AdvancedExtractor:
         }
 
         dimension_names = [
-            ('sessionDefaultChannelGroup', 'canales'),
+            (self.CHANNEL_DIMENSION, 'canales'),
             ('deviceCategory', 'dispositivos'),
             ('country', 'paises'),
             ('city', 'ciudades')
@@ -536,6 +544,12 @@ def generate_sample_data(days: int = 365) -> pd.DataFrame:
     )
     conversiones = np.maximum(conversiones, 50)
 
+    # Métricas de ingresos (para impacto monetario)
+    ticket_medio = np.random.uniform(35, 55, days)  # Ticket medio entre 35-55€
+    compras = conversiones * np.random.uniform(0.6, 0.8, days)  # 60-80% de conversiones son compras
+    compras = np.maximum(compras, 10)
+    ingresos = compras * ticket_medio
+
     # Crear DataFrame
     data = pd.DataFrame({
         'date': dates,
@@ -546,7 +560,9 @@ def generate_sample_data(days: int = 365) -> pd.DataFrame:
         'trafico_directo': trafico_dir,
         'trafico_pago': trafico_pago,
         'bounce_rate': bounce_rate,
-        'paginas_por_sesion': paginas
+        'paginas_por_sesion': paginas,
+        'compras': compras,
+        'ingresos': ingresos
     })
 
     return data
