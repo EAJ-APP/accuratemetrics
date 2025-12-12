@@ -765,6 +765,98 @@ def plot_monetary_impact(
     return fig
 
 
+def plot_monetary_comparison(
+    intervenciones: List[Dict[str, Any]],
+    ingresos_totales: float,
+    compras_totales: float,
+    figsize: Tuple[int, int] = (14, 8)
+) -> plt.Figure:
+    """
+    Crear gráfico comparativo de impacto monetario entre intervenciones
+
+    Args:
+        intervenciones: Lista de dicts con 'nombre', 'efecto_total', 'significativo'
+        ingresos_totales: Ingresos totales del período
+        compras_totales: Número total de compras
+        figsize: Tamaño de la figura
+
+    Returns:
+        Figura de matplotlib
+    """
+    fig, axes = plt.subplots(1, 2, figsize=figsize)
+
+    # Calcular ticket medio
+    ticket_medio = ingresos_totales / compras_totales if compras_totales > 0 else 0
+
+    # Preparar datos
+    nombres = [i['nombre'] for i in intervenciones]
+    efectos = [i['efecto_total'] for i in intervenciones]
+    impactos_monetarios = [e * ticket_medio for e in efectos]
+    significativos = [i.get('significativo', False) for i in intervenciones]
+
+    # Colores según significancia y dirección
+    colores_efectos = []
+    colores_monetarios = []
+    for efecto, sig in zip(efectos, significativos):
+        if sig:
+            if efecto > 0:
+                colores_efectos.append(COLORS['positive'])
+                colores_monetarios.append(COLORS['positive'])
+            else:
+                colores_efectos.append(COLORS['negative'])
+                colores_monetarios.append(COLORS['negative'])
+        else:
+            colores_efectos.append(COLORS['neutral'])
+            colores_monetarios.append(COLORS['neutral'])
+
+    # Panel 1: Comparación de conversiones extra
+    ax1 = axes[0]
+    bars1 = ax1.bar(nombres, efectos, color=colores_efectos, edgecolor='black', linewidth=2)
+
+    # Añadir valores
+    for bar, val in zip(bars1, efectos):
+        y_pos = bar.get_height() + (max(abs(e) for e in efectos) * 0.02) if val >= 0 else bar.get_height() - (max(abs(e) for e in efectos) * 0.05)
+        ax1.text(bar.get_x() + bar.get_width()/2, y_pos,
+                f'{val:+,.0f}', ha='center', va='bottom' if val >= 0 else 'top',
+                fontsize=12, fontweight='bold')
+
+    ax1.axhline(0, color='black', linewidth=1)
+    ax1.set_ylabel('Conversiones Extra', fontsize=12, fontweight='bold')
+    ax1.set_title('Impacto en Conversiones', fontsize=13, fontweight='bold')
+    ax1.grid(True, alpha=0.3, axis='y')
+
+    # Panel 2: Comparación de impacto monetario
+    ax2 = axes[1]
+    bars2 = ax2.bar(nombres, impactos_monetarios, color=colores_monetarios, edgecolor='black', linewidth=2)
+
+    # Añadir valores
+    for bar, val in zip(bars2, impactos_monetarios):
+        y_pos = bar.get_height() + (max(abs(im) for im in impactos_monetarios) * 0.02) if val >= 0 else bar.get_height() - (max(abs(im) for im in impactos_monetarios) * 0.05)
+        ax2.text(bar.get_x() + bar.get_width()/2, y_pos,
+                f'{val:+,.0f}€', ha='center', va='bottom' if val >= 0 else 'top',
+                fontsize=12, fontweight='bold')
+
+    ax2.axhline(0, color='black', linewidth=1)
+    ax2.set_ylabel('Impacto Monetario (€)', fontsize=12, fontweight='bold')
+    ax2.set_title(f'Impacto Monetario (Ticket medio: {ticket_medio:,.2f}€)', fontsize=13, fontweight='bold')
+    ax2.grid(True, alpha=0.3, axis='y')
+
+    # Leyenda
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor=COLORS['positive'], edgecolor='black', label='Positivo significativo'),
+        Patch(facecolor=COLORS['negative'], edgecolor='black', label='Negativo significativo'),
+        Patch(facecolor=COLORS['neutral'], edgecolor='black', label='No significativo')
+    ]
+    fig.legend(handles=legend_elements, loc='upper center', ncol=3, bbox_to_anchor=(0.5, 0.02))
+
+    plt.suptitle('Comparación de Impacto Monetario entre Intervenciones',
+                fontsize=14, fontweight='bold')
+    plt.tight_layout(rect=[0, 0.05, 1, 0.95])
+
+    return fig
+
+
 def fig_to_bytes(fig: plt.Figure, format: str = 'png', dpi: int = 150) -> bytes:
     """
     Convertir figura de matplotlib a bytes para descarga
