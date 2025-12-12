@@ -399,6 +399,23 @@ else:
                 help="Filtrar por ciudad"
             )
 
+        # Mostrar filtros activos
+        active_filters = []
+        if channel_filter != 'Todos':
+            active_filters.append(f"Canal: {channel_filter}")
+        if device_filter != 'Todos':
+            active_filters.append(f"Dispositivo: {device_filter}")
+        if country_filter != 'Todos':
+            active_filters.append(f"País: {country_filter}")
+        if city_filter != 'Todos':
+            active_filters.append(f"Ciudad: {city_filter}")
+
+        if active_filters:
+            st.info(f"🔍 **Filtros activos:** {' | '.join(active_filters)}")
+
+        # Debug mode
+        debug_mode = st.checkbox("🐛 Modo depuración", value=False, help="Mostrar información detallada de la extracción")
+
         # Botón de extracción
         if st.button("📥 Extraer Datos de GA4", type="primary", use_container_width=True):
             if 'credentials' not in st.session_state or not st.session_state.credentials:
@@ -410,6 +427,17 @@ else:
                     try:
                         extractor = GA4AdvancedExtractor(st.session_state.credentials)
 
+                        # Mostrar info de debug antes de extraer
+                        if debug_mode:
+                            st.write("### 🐛 Debug Info")
+                            st.write(f"**Property ID:** {st.session_state.adv_selected_property_id}")
+                            st.write(f"**Fechas:** {start_date} a {end_date}")
+                            st.write(f"**Channel filter (raw):** `{channel_filter}`")
+                            st.write(f"**Channel filter (passed):** `{channel_filter if channel_filter != 'Todos' else None}`")
+                            st.write(f"**Device filter:** `{device_filter if device_filter != 'Todos' else None}`")
+                            st.write(f"**Country filter:** `{country_filter if country_filter != 'Todos' else None}`")
+                            st.write(f"**City filter:** `{city_filter if city_filter != 'Todos' else None}`")
+
                         df = extractor.get_advanced_metrics(
                             property_id=st.session_state.adv_selected_property_id,
                             start_date=start_date.strftime('%Y-%m-%d'),
@@ -418,11 +446,23 @@ else:
                             device_filter=device_filter if device_filter != 'Todos' else None,
                             country_filter=country_filter if country_filter != 'Todos' else None,
                             city_filter=city_filter if city_filter != 'Todos' else None,
-                            include_channel_breakdown=True
+                            include_channel_breakdown=True,
+                            debug=debug_mode
                         )
+
+                        if debug_mode:
+                            st.write(f"**Filas retornadas:** {len(df)}")
+                            st.write(f"**Columnas:** {list(df.columns)}")
+                            if 'sesiones_totales' in df.columns:
+                                st.write(f"**Total sesiones:** {df['sesiones_totales'].sum():,.0f}")
 
                         if df.empty:
                             st.error("No se encontraron datos para los filtros seleccionados")
+                            if debug_mode:
+                                st.warning("⚠️ El DataFrame está vacío. Posibles causas:")
+                                st.write("- El filtro no coincide con ningún dato")
+                                st.write("- El nombre del canal/dispositivo/país tiene diferente formato")
+                                st.write("- No hay datos en el rango de fechas seleccionado")
                         else:
                             st.session_state.advanced_ga4_data = df
                             st.success(f"Datos extraídos: {len(df)} días, {len(df.columns)} métricas")
