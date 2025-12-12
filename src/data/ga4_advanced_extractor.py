@@ -72,7 +72,8 @@ class GA4AdvancedExtractor:
         device_filter: Optional[str] = None,
         country_filter: Optional[str] = None,
         city_filter: Optional[str] = None,
-        include_channel_breakdown: bool = True
+        include_channel_breakdown: bool = True,
+        debug: bool = False
     ) -> pd.DataFrame:
         """
         Extraer métricas avanzadas de GA4 con filtros opcionales
@@ -86,6 +87,7 @@ class GA4AdvancedExtractor:
             country_filter: Filtrar por país
             city_filter: Filtrar por ciudad
             include_channel_breakdown: Si incluir desglose por tipo de tráfico
+            debug: Si mostrar información de depuración
 
         Returns:
             DataFrame con todas las métricas diarias
@@ -121,6 +123,17 @@ class GA4AdvancedExtractor:
             channel_filter, device_filter, country_filter, city_filter
         )
 
+        # Debug: mostrar filtros aplicados
+        if debug:
+            print(f"\n{'='*60}")
+            print("DEBUG - Filtros aplicados:")
+            print(f"  Channel: {channel_filter}")
+            print(f"  Device: {device_filter}")
+            print(f"  Country: {country_filter}")
+            print(f"  City: {city_filter}")
+            print(f"  Dimension filter object: {dimension_filter}")
+            print(f"{'='*60}\n")
+
         # Request principal
         request = RunReportRequest(
             property=property_id,
@@ -132,6 +145,9 @@ class GA4AdvancedExtractor:
 
         # Ejecutar request
         response = self.client.run_report(request)
+
+        if debug:
+            print(f"DEBUG - Rows returned: {len(response.rows) if response.rows else 0}")
 
         # Convertir a DataFrame
         df = self._response_to_dataframe(response, metrics_to_extract)
