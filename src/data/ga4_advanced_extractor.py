@@ -171,7 +171,8 @@ class GA4AdvancedExtractor:
                         field_name=self.CHANNEL_DIMENSION,
                         string_filter=Filter.StringFilter(
                             value=channel_filter,
-                            match_type=Filter.StringFilter.MatchType.CONTAINS
+                            match_type=Filter.StringFilter.MatchType.EXACT,
+                            case_sensitive=False
                         )
                     )
                 )
@@ -183,8 +184,9 @@ class GA4AdvancedExtractor:
                     filter=Filter(
                         field_name='deviceCategory',
                         string_filter=Filter.StringFilter(
-                            value=device_filter,
-                            match_type=Filter.StringFilter.MatchType.EXACT
+                            value=device_filter.lower(),
+                            match_type=Filter.StringFilter.MatchType.EXACT,
+                            case_sensitive=False
                         )
                     )
                 )
@@ -197,7 +199,8 @@ class GA4AdvancedExtractor:
                         field_name='country',
                         string_filter=Filter.StringFilter(
                             value=country_filter,
-                            match_type=Filter.StringFilter.MatchType.EXACT
+                            match_type=Filter.StringFilter.MatchType.EXACT,
+                            case_sensitive=False
                         )
                     )
                 )
@@ -210,7 +213,8 @@ class GA4AdvancedExtractor:
                         field_name='city',
                         string_filter=Filter.StringFilter(
                             value=city_filter,
-                            match_type=Filter.StringFilter.MatchType.EXACT
+                            match_type=Filter.StringFilter.MatchType.EXACT,
+                            case_sensitive=False
                         )
                     )
                 )

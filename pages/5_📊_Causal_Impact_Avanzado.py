@@ -62,6 +62,7 @@ try:
         plot_recommended_variables,
         plot_dual_intervention_timeline,
         plot_monetary_impact,
+        plot_monetary_comparison,
         fig_to_bytes
     )
 except ImportError as e:
@@ -1360,6 +1361,54 @@ if st.session_state.advanced_ga4_data is not None:
                     plt.close(fig_comp)
                 except Exception as e:
                     st.error(f"Error generando gráfico de comparación: {e}")
+
+                # Gráfico de comparación monetaria
+                st.markdown("---")
+                st.subheader("💰 Comparación de Impacto Monetario")
+
+                try:
+                    # Obtener datos de ingresos
+                    if 'ingresos' in df.columns and 'compras' in df.columns:
+                        ingresos_totales = df['ingresos'].sum()
+                        compras_totales = df['compras'].sum()
+                    else:
+                        ingresos_totales = df.get('ingresos', pd.Series([0])).sum()
+                        compras_totales = df.get('compras', pd.Series([1])).sum()
+                        if compras_totales == 0:
+                            compras_totales = 1
+
+                    # Preparar datos de intervenciones
+                    intervenciones_data = []
+                    result_1 = st.session_state.ci_result_1
+                    result_2 = st.session_state.ci_result_2
+
+                    if result_1:
+                        intervenciones_data.append({
+                            'nombre': result_1['nombre'],
+                            'efecto_total': result_1['metricas']['efecto_total'],
+                            'significativo': result_1['estadisticas']['es_significativo']
+                        })
+
+                    if result_2 is not None and isinstance(result_2, dict):
+                        intervenciones_data.append({
+                            'nombre': result_2['nombre'],
+                            'efecto_total': result_2['metricas']['efecto_total'],
+                            'significativo': result_2['estadisticas']['es_significativo']
+                        })
+
+                    if len(intervenciones_data) >= 2:
+                        fig_monetary_comp = plot_monetary_comparison(
+                            intervenciones=intervenciones_data,
+                            ingresos_totales=ingresos_totales,
+                            compras_totales=compras_totales
+                        )
+                        st.pyplot(fig_monetary_comp, use_container_width=True)
+                        plt.close(fig_monetary_comp)
+                    else:
+                        st.info("Se necesitan 2 intervenciones para comparar el impacto monetario")
+
+                except Exception as e:
+                    st.warning(f"No se pudo generar el gráfico de comparación monetaria: {e}")
 
                 # Ganador
                 st.markdown("---")
