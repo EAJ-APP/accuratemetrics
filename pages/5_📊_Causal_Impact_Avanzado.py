@@ -347,6 +347,13 @@ else:
         with col2:
             st.subheader("🔍 Filtros (Opcional)")
 
+            # Botón para recargar filtros
+            col_filter_reload = st.columns([3, 1])
+            with col_filter_reload[1]:
+                if st.button("🔄", help="Recargar filtros de GA4"):
+                    st.session_state.adv_available_filters = None
+                    st.rerun()
+
             # Cargar filtros disponibles dinámicamente si no están cargados
             if st.session_state.adv_available_filters is None and st.session_state.adv_selected_property_id:
                 try:
@@ -358,22 +365,40 @@ else:
                             end_date=(datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
                         )
                         st.session_state.adv_available_filters = filters
+
+                        # Mostrar resumen de filtros cargados
+                        n_canales = len(filters.get('canales', [])) - 1  # -1 por "Todos"
+                        n_dispositivos = len(filters.get('dispositivos', [])) - 1
+                        n_paises = len(filters.get('paises', [])) - 1
+                        if n_canales > 0 or n_dispositivos > 0 or n_paises > 0:
+                            st.success(f"✓ Filtros cargados: {n_canales} canales, {n_dispositivos} dispositivos, {n_paises} países")
+                        else:
+                            st.warning("⚠️ No se cargaron valores de filtro de GA4")
+
                 except Exception as e:
-                    st.warning(f"No se pudieron cargar filtros dinámicos: {e}")
+                    st.error(f"Error cargando filtros: {e}")
                     st.session_state.adv_available_filters = {
-                        'canales': ['Todos', 'Organic Search', 'Direct', 'Paid Search', 'Display', 'Social'],
+                        'canales': ['Todos', 'Organic Search', 'Direct', 'Paid Search', 'Display', 'Social', 'Referral', 'Email'],
                         'dispositivos': ['Todos', 'desktop', 'mobile', 'tablet'],
                         'paises': ['Todos'],
                         'ciudades': ['Todos']
                     }
+                    st.info("Usando filtros predeterminados")
 
             # Usar filtros dinámicos o defaults
             filters = st.session_state.adv_available_filters or {
-                'canales': ['Todos', 'Organic Search', 'Direct', 'Paid Search', 'Display', 'Social'],
+                'canales': ['Todos', 'Organic Search', 'Direct', 'Paid Search', 'Display', 'Social', 'Referral', 'Email'],
                 'dispositivos': ['Todos', 'desktop', 'mobile', 'tablet'],
                 'paises': ['Todos'],
                 'ciudades': ['Todos']
             }
+
+            # Debug: mostrar opciones disponibles
+            with st.expander("Ver opciones de filtro disponibles"):
+                st.write(f"**Canales:** {filters.get('canales', [])}")
+                st.write(f"**Dispositivos:** {filters.get('dispositivos', [])}")
+                st.write(f"**Países:** {len(filters.get('paises', []))} opciones")
+                st.write(f"**Ciudades:** {len(filters.get('ciudades', []))} opciones")
 
             channel_filter = st.selectbox(
                 "Canal:",
